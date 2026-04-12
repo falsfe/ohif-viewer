@@ -1,0 +1,46 @@
+{
+  "name": "@ohif/mode-mpr",
+  "version": "3.13.0-beta.53",
+  "description": "A simplified MPR mode for medical image viewing with measurement tools",
+  "author": "OHIF Contributors",
+  "license": "MIT",
+  "main": "dist/ohif-mode-mpr.js",
+  "module": "src/index.tsx",
+  "files": [
+    "dist/**",
+    "public/**",
+    "README.md"
+  ],
+  "repository": "OHIF/Viewers",
+  "keywords": [
+    "ohif-mode",
+    "mpr",
+    "medical-imaging"
+  ],
+  "engines": {
+    "node": ">=14",
+    "npm": ">=6",
+    "yarn": ">=1.16.0"
+  },
+  "peerDependencies": {
+    "@ohif/core": "3.13.0-beta.53",
+    "@ohif/extension-cornerstone": "3.13.0-beta.53",
+    "@ohif/extension-default": "3.13.0-beta.53"
+  },
+  "dependencies": {
+    "@babel/runtime": "7.28.2"
+  },
+  "devDependencies": {
+    "webpack": "5.105.0",
+    "webpack-merge": "5.10.0"
+  },
+  "scripts": {
+    "dev": "cross-env NODE_ENV=development webpack --config .webpack/webpack.dev.js --watch --output-pathinfo",
+    "dev:cornerstone": "yarn run dev",
+    "build": "cross-env NODE_ENV=production webpack --config .webpack/webpack.prod.js",
+    "build:package": "yarn run build",
+    "start": "yarn run dev",
+    "test:unit": "jest --watchAll",
+    "test:unit:ci": "jest --ci --runInBand --collectCoverage --passWithNoTests"
+  }
+}
