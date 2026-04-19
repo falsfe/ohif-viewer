@@ -1,0 +1,19 @@
+{
+  "name": "@ohif/mode-volume-3d",
+  "version": "3.13.0-beta.53",
+  "description": "A 3D volume rendering mode with MPR views for medical image viewing",
+  "main": "dist/index.umd.js",
+  "module": "src/index.tsx",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "peerDependencies": {
+    "@ohif/core": "3.13.0-beta.53",
+    "@ohif/extension-cornerstone": "3.13.0-beta.53",
+    "@ohif/extension-default": "3.13.0-beta.53"
+  }
+}

@@ -103,6 +103,10 @@
     {
       "packageName": "@ohif/mode-mpr",
       "version": "3.0.0"
+    },
+    {
+      "packageName": "@ohif/mode-volume-3d",
+      "version": "3.0.0"
     }
   ],
   "public": [
