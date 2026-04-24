@@ -6,7 +6,9 @@
 module.exports = {
   verbose: true,
   // roots: ['<rootDir>/src'],
-  testMatch: ['<rootDir>/src/**/*.test.js', '<rootDir>/src/**/*.test.ts'],
+  // Keep testMatch relative so Jest does not turn `.worktrees` Windows paths
+  // into escaped absolute glob segments that fail discovery.
+  testMatch: ['**/src/**/*.test.js', '**/src/**/*.test.ts'],
   testPathIgnorePatterns: ['<rootDir>/node_modules/'],
   testEnvironment: 'jsdom',
   moduleFileExtensions: ['js', 'jsx', 'ts', 'tsx'],
