@@ -2,6 +2,9 @@
 window.config = {
   routerBasename: null,
   showStudyList: true,
+  auth: {
+    apiBaseUrl: 'http://localhost:4000',
+  },
   extensions: [],
   modes: [],
   // below flag is for performance reasons, but it might not work for all servers

@@ -10,6 +10,8 @@ import Debug from './Debug';
 import NotFound from './NotFound';
 import buildModeRoutes from './buildModeRoutes';
 import PrivateRoute from './PrivateRoute';
+import Login from './Auth/Login';
+import Register from './Auth/Register';
 import PropTypes from 'prop-types';
 import { routerBasename } from '../utils/publicUrl';
 import { useAppConfig } from '@state';
@@ -67,6 +69,14 @@ NotFoundStudy.propTypes = {
 
 // TODO: Include "routes" debug route if dev build
 const bakedInRoutes = [
+  {
+    path: `/auth/login`,
+    children: Login,
+  },
+  {
+    path: `/auth/register`,
+    children: Register,
+  },
   {
     path: `/notfoundserver`,
     children: NotFoundServer,
