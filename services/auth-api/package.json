@@ -6,10 +6,13 @@
   "scripts": {
     "dev": "ts-node --project tsconfig.json --transpile-only src/server.ts",
     "build": "tsc -p tsconfig.json",
+    "test": "ts-node --project tsconfig.json src/auth/auth.service.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/server.js",
-    "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev"
+    "prisma:generate": "node scripts/run-prisma.cjs generate --schema prisma/schema.prisma",
+    "prisma:migrate": "node scripts/run-prisma.cjs migrate dev --schema prisma/schema.prisma",
+    "prisma:migrate:deploy": "node scripts/run-prisma.cjs migrate deploy --schema prisma/schema.prisma",
+    "prisma:validate": "node scripts/run-prisma.cjs validate --schema prisma/schema.prisma"
   },
   "dependencies": {
     "@prisma/client": "^6.7.0",
