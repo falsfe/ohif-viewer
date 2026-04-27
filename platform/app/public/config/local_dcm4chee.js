@@ -3,7 +3,7 @@ window.config = {
   routerBasename: null,
   showStudyList: true,
   auth: {
-    apiBaseUrl: 'http://localhost:4000',
+    apiBaseUrl: 'http://localhost:4001',
   },
   extensions: [],
   modes: [],
