@@ -1,31 +1,97 @@
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import path from 'node:path';
 
-const serviceRoot = path.resolve(__dirname, '..', '..');
-const schema = fs.readFileSync(path.join(serviceRoot, 'prisma', 'schema.prisma'), 'utf8');
-const initialMigration = fs.readFileSync(
-  path.join(serviceRoot, 'prisma', 'migrations', '20260424141000_init_auth', 'migration.sql'),
-  'utf8'
-);
-const followupMigration = fs.readFileSync(
-  path.join(serviceRoot, 'prisma', 'migrations', '20260427153000_add_refresh_token_hash_unique', 'migration.sql'),
-  'utf8'
-);
+import { buildRefreshTokenCookieOptions } from './cookie';
+import {
+  createAccessToken,
+  createRefreshToken,
+  decodeAccessToken,
+  decodeRefreshToken,
+} from './token.service';
+import { hashPassword, hashToken, verifyPassword } from '../utils/hash';
 
-assert.match(schema, /model User/);
-assert.match(schema, /model RefreshToken/);
-assert.match(schema, /@@map\("users"\)/);
-assert.match(schema, /@@map\("refresh_tokens"\)/);
-assert.match(schema, /username\s+String\s+@unique/);
-assert.match(schema, /email\s+String\s+@unique/);
-assert.match(schema, /tokenHash\s+String\s+@unique/);
+async function main(): Promise<void> {
+  const plainPassword = 'S3cureP@ssword!';
+  const passwordHash = await hashPassword(plainPassword);
 
-assert.match(initialMigration, /CREATE TABLE `users`/);
-assert.match(initialMigration, /CREATE TABLE `refresh_tokens`/);
-assert.match(initialMigration, /UNIQUE INDEX `uq_users_username`/);
-assert.match(initialMigration, /UNIQUE INDEX `uq_users_email`/);
-assert.match(initialMigration, /CONSTRAINT `fk_refresh_tokens_user_id`/);
-assert.match(followupMigration, /CREATE UNIQUE INDEX `uq_refresh_tokens_token_hash`/);
+  assert.notEqual(passwordHash, plainPassword);
+  assert.ok(await verifyPassword(plainPassword, passwordHash));
+  assert.equal(await verifyPassword('wrong-password', passwordHash), false);
 
-console.log('auth schema and migration define users and refresh_tokens');
+  const tokenHash = hashToken('refresh-token-value');
+  assert.equal(tokenHash.length, 64);
+  assert.match(tokenHash, /^[a-f0-9]{64}$/);
+  assert.equal(tokenHash, hashToken('refresh-token-value'));
+
+  const authConfig = {
+    accessTokenSecret: 'access-secret-value-that-is-long-enough',
+    refreshTokenSecret: 'refresh-secret-value-that-is-long-enough',
+    accessTokenExpiresIn: '15m',
+    refreshTokenExpiresIn: '7d',
+    cookieDomain: undefined,
+    isProduction: false,
+  };
+  const payload = {
+    sub: '42',
+    username: 'reader',
+    email: 'reader@example.com',
+  };
+
+  const accessToken = createAccessToken(payload, authConfig);
+  const refreshToken = createRefreshToken({ sub: payload.sub }, authConfig);
+  const decodedAccessToken = decodeAccessToken(accessToken, authConfig);
+  const decodedRefreshToken = decodeRefreshToken(refreshToken, authConfig);
+
+  assert.equal(decodedAccessToken.sub, payload.sub);
+  assert.equal(decodedAccessToken.username, payload.username);
+  assert.equal(decodedAccessToken.email, payload.email);
+  assert.equal(decodedAccessToken.type, 'access');
+  assert.equal(decodedRefreshToken.sub, payload.sub);
+  assert.equal(typeof decodedRefreshToken.jti, 'string');
+  assert.ok(decodedRefreshToken.jti.length > 0);
+  assert.equal(decodedRefreshToken.type, 'refresh');
+  assert.throws(() => decodeAccessToken(refreshToken, authConfig));
+  assert.throws(() =>
+    decodeRefreshToken(refreshToken, {
+      ...authConfig,
+      refreshTokenSecret: 'different-refresh-secret-value-that-is-long-enough',
+    })
+  );
+
+  const refreshCookie = buildRefreshTokenCookieOptions(authConfig);
+
+  assert.equal(refreshCookie.httpOnly, true);
+  assert.equal(refreshCookie.sameSite, 'lax');
+  assert.equal(refreshCookie.secure, false);
+  assert.equal(refreshCookie.path, '/api/auth');
+  assert.equal(refreshCookie.domain, undefined);
+  assert.equal(refreshCookie.maxAge, 7 * 24 * 60 * 60 * 1000);
+
+  const secureRefreshCookie = buildRefreshTokenCookieOptions({
+    ...authConfig,
+    isProduction: true,
+  });
+
+  assert.equal(secureRefreshCookie.secure, true);
+  assert.throws(() =>
+    buildRefreshTokenCookieOptions({
+      ...authConfig,
+      refreshTokenExpiresIn: '1 week',
+    })
+  );
+
+  process.env.DATABASE_URL = 'mysql://ohif_user:CHANGE_ME@127.0.0.1:3306/ohif_auth';
+  process.env.JWT_ACCESS_SECRET = authConfig.accessTokenSecret;
+  process.env.JWT_REFRESH_SECRET = authConfig.refreshTokenSecret;
+  process.env.JWT_ACCESS_EXPIRES = authConfig.accessTokenExpiresIn;
+  process.env.JWT_REFRESH_EXPIRES = authConfig.refreshTokenExpiresIn;
+  const { env } = await import('../config/env');
+  const { prisma } = await import('../db/prisma');
+
+  assert.equal(env.databaseUrl, process.env.DATABASE_URL);
+  assert.equal(env.auth.accessTokenExpiresIn, authConfig.accessTokenExpiresIn);
+  assert.equal(typeof prisma.$disconnect, 'function');
+
+  console.log('auth hashing, token, and cookie utilities work');
+}
+
+void main();
