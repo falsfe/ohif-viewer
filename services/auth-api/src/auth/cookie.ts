@@ -38,3 +38,9 @@ export function buildRefreshTokenCookieOptions(authConfig: AuthConfig): CookieOp
     maxAge: parseDurationToMs(authConfig.refreshTokenExpiresIn),
   };
 }
+
+export function buildClearRefreshTokenCookieOptions(authConfig: AuthConfig): CookieOptions {
+  const { maxAge: _maxAge, ...options } = buildRefreshTokenCookieOptions(authConfig);
+
+  return options;
+}
