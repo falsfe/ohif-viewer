@@ -71,12 +71,12 @@ function ViewerHeader({ appConfig }: withAppTypes<{ appConfig: AppTypes.Config }
     },
   ];
 
-  if (appConfig.oidc) {
+  if (appConfig.oidc || appConfig.auth) {
     menuOptions.push({
-      title: t('Header:Logout'),
+      title: '退出登录',
       icon: 'power-off',
-      onClick: async () => {
-        navigate(`/logout?redirect_uri=${encodeURIComponent(window.location.href)}`);
+      onClick: () => {
+        navigate('/auth/logout');
       },
     });
   }

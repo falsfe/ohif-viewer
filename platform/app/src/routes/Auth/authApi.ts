@@ -1,7 +1,4 @@
-const getBaseUrl = (): string => {
-  const config = (window as any).config;
-  return config?.auth?.apiBaseUrl ?? 'http://localhost:4001';
-};
+const getBaseUrl = (): string => '';
 
 export async function login(usernameOrEmail: string, password: string): Promise<{
   accessToken: string;

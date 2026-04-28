@@ -193,6 +193,11 @@ module.exports = (env, argv) => {
           [`^${PROXY_PATH_REWRITE_FROM}`]: PROXY_PATH_REWRITE_TO,
         },
       },
+      {
+        context: ['/api/auth'],
+        target: 'http://localhost:4001',
+        changeOrigin: true,
+      },
     ];
   }
 

@@ -505,12 +505,12 @@ function WorkList({
     },
   ];
 
-  if (appConfig.oidc) {
+  if (appConfig.oidc || appConfig.auth) {
     menuOptions.push({
       icon: 'power-off',
-      title: t('Header:Logout'),
+      title: '退出登录',
       onClick: () => {
-        navigate(`/logout?redirect_uri=${encodeURIComponent(window.location.href)}`);
+        navigate('/auth/logout');
       },
     });
   }
