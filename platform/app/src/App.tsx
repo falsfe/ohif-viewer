@@ -34,6 +34,7 @@ import { AppConfigProvider } from '@state';
 import createRoutes from './routes';
 import appInit from './appInit.js';
 import OpenIdConnectRoutes from './utils/OpenIdConnectRoutes';
+import LocalAuthRoutes from './routes/Auth/LocalAuthRoutes';
 import { ShepherdJourneyProvider } from 'react-shepherd';
 import './App.css';
 
@@ -91,7 +92,7 @@ function App({
 
   // Set appConfig
   const appConfigState = init.appConfig;
-  const { routerBasename, modes, dataSources, oidc, showStudyList } = appConfigState;
+  const { routerBasename, modes, dataSources, oidc, showStudyList, auth } = appConfigState;
 
   // get the maximum 3D texture size
   const canvas = document.createElement('canvas');
@@ -164,6 +165,10 @@ function App({
         routerBasename={routerBasename}
         userAuthenticationService={userAuthenticationService}
       />
+    );
+  } else if (auth?.apiBaseUrl && userAuthenticationService) {
+    authRoutes = (
+      <LocalAuthRoutes userAuthenticationService={userAuthenticationService} />
     );
   }
 

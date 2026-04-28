@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import AuthPageLayout from './AuthPageLayout';
 import { login } from './authApi';
+import { setAccessToken } from './LocalAuthRoutes';
 
-export default function Login() {
+export default function Login({ servicesManager }: withAppTypes) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [usernameOrEmail, setUsernameOrEmail] = useState('');
@@ -12,6 +13,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
 
   const registered = searchParams.get('registered') === '1';
+  const userAuthenticationService = servicesManager?.services?.userAuthenticationService;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -20,9 +22,12 @@ export default function Login() {
 
     try {
       const result = await login(usernameOrEmail, password);
-      sessionStorage.setItem('accessToken', result.accessToken);
-      sessionStorage.setItem('user', JSON.stringify(result.user));
-      navigate('/');
+      setAccessToken(result.accessToken);
+      userAuthenticationService?.setUser(result.user);
+
+      const redirectTo = sessionStorage.getItem('ohif-auth-redirect-to') || '/';
+      sessionStorage.removeItem('ohif-auth-redirect-to');
+      navigate(redirectTo);
     } catch (err: any) {
       const msg = err.message || '';
       if (msg.includes('INVALID_CREDENTIALS') || msg.includes('Invalid')) {

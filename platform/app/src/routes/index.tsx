@@ -12,6 +12,7 @@ import buildModeRoutes from './buildModeRoutes';
 import PrivateRoute from './PrivateRoute';
 import Login from './Auth/Login';
 import Register from './Auth/Register';
+import LogoutPage from './Auth/LogoutPage';
 import PropTypes from 'prop-types';
 import { routerBasename } from '../utils/publicUrl';
 import { useAppConfig } from '@state';
@@ -76,6 +77,10 @@ const bakedInRoutes = [
   {
     path: `/auth/register`,
     children: Register,
+  },
+  {
+    path: `/auth/logout`,
+    children: LogoutPage,
   },
   {
     path: `/notfoundserver`,
