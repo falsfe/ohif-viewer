@@ -155,7 +155,15 @@ module.exports = (env, argv) => {
       },
       proxy: [
         {
-          '/dicomweb': 'http://localhost:5000',
+          context: ['/dicomweb'],
+          target: 'http://192.168.150.101:8042',
+          changeOrigin: true,
+          pathRewrite: { '^/dicomweb': '/dicom-web' },
+        },
+        {
+          context: ['/api/auth'],
+          target: 'http://localhost:4001',
+          changeOrigin: true,
         },
       ],
       static: [
