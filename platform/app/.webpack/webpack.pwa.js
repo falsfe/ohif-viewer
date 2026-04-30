@@ -161,7 +161,18 @@ module.exports = (env, argv) => {
           pathRewrite: { '^/dicomweb': '/dicom-web' },
         },
         {
+          context: ['/orthanc-api'],
+          target: 'http://192.168.150.101:8042',
+          changeOrigin: true,
+          pathRewrite: { '^/orthanc-api': '' },
+        },
+        {
           context: ['/api/auth'],
+          target: 'http://localhost:4001',
+          changeOrigin: true,
+        },
+        {
+          context: ['/api/studies'],
           target: 'http://localhost:4001',
           changeOrigin: true,
         },
@@ -203,6 +214,11 @@ module.exports = (env, argv) => {
       },
       {
         context: ['/api/auth'],
+        target: 'http://localhost:4001',
+        changeOrigin: true,
+      },
+      {
+        context: ['/api/studies'],
         target: 'http://localhost:4001',
         changeOrigin: true,
       },

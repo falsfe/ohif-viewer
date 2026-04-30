@@ -125,6 +125,8 @@ window.config = {
           relativeResolution: 'studies',
         },
         omitQuotationForMultipartRequest: true,
+        dicomUploadEnabled: true,
+        supportsStow: true,
       },
     },
 

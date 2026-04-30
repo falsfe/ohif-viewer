@@ -21,6 +21,9 @@ export default function LocalAuthRoutes({ userAuthenticationService }: Props) {
 
   useEffect(() => {
     const getAuthorizationHeader = () => {
+      if (accessToken) {
+        return { Authorization: `Bearer ${accessToken}` };
+      }
       return;
     };
 

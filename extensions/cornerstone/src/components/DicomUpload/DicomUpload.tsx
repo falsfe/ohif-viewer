@@ -10,7 +10,7 @@ import { Button } from '@ohif/ui-next';
 
 type DicomUploadProps = {
   dataSource;
-  onComplete: () => void;
+  onComplete: (studyInstanceUids: string[]) => void;
   onStarted: () => void;
 };
 

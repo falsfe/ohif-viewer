@@ -1,4 +1,5 @@
 import dicomImageLoader from '@cornerstonejs/dicom-image-loader';
+import dcmjs from 'dcmjs';
 
 import { PubSubService } from '@ohif/core';
 
@@ -42,6 +43,7 @@ export default class DicomFileUploader extends PubSubService {
   private _abortController = new AbortController();
   private _status: UploadStatus = UploadStatus.NotStarted;
   private _percentComplete = 0;
+  private _studyInstanceUid: string | undefined;
 
   constructor(file, dataSource) {
     super(EVENTS);
@@ -68,6 +70,10 @@ export default class DicomFileUploader extends PubSubService {
 
   getStatus(): UploadStatus {
     return this._status;
+  }
+
+  getStudyInstanceUid(): string | undefined {
+    return this._studyInstanceUid;
   }
 
   getPercentComplete(): number {
@@ -124,6 +130,16 @@ export default class DicomFileUploader extends PubSubService {
               new UploadRejection(UploadStatus.Failed, 'Not a valid DICOM file.')
             );
             return;
+          }
+
+          // Extract StudyInstanceUID from DICOM data
+          try {
+            const byteArray = new Uint8Array(dicomFile);
+            const dicomData = dcmjs.data.DicomMessage.readFile(byteArray.buffer);
+            const dataset = dcmjs.data.DicomMetaDictionary.naturalizeDataset(dicomData.dict);
+            this._studyInstanceUid = dataset.StudyInstanceUID;
+          } catch (e) {
+            console.warn('Could not extract StudyInstanceUID from DICOM file', e);
           }
 
           const request = new XMLHttpRequest();

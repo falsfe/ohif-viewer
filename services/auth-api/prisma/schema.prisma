@@ -17,6 +17,7 @@ model User {
   createdAt     DateTime       @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt     DateTime       @updatedAt @map("updated_at") @db.DateTime(3)
   refreshTokens RefreshToken[]
+  userStudies   UserStudy[]
 
   @@map("users")
 }
@@ -34,4 +35,16 @@ model RefreshToken {
 
   @@index([userId], map: "idx_refresh_tokens_user_id")
   @@map("refresh_tokens")
+}
+
+model UserStudy {
+  id               BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  userId           BigInt   @map("user_id") @db.UnsignedBigInt
+  studyInstanceUid String   @map("study_instance_uid") @db.VarChar(255)
+  createdAt        DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, studyInstanceUid])
+  @@index([userId])
+  @@map("user_studies")
 }

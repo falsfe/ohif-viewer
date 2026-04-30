@@ -14,7 +14,7 @@ import classNames from 'classnames';
 
 type DicomUploadProgressProps = {
   dicomFileUploaderArr: DicomFileUploader[];
-  onComplete: () => void;
+  onComplete: (studyInstanceUids: string[]) => void;
 };
 
 const ONE_SECOND = 1000;
@@ -285,7 +285,15 @@ function DicomUploadProgress({
             <Button
               disabled={false}
               className="ml-auto"
-              onClick={onComplete}
+              onClick={() => {
+                const uniqueUids = [...new Set(
+                  dicomFileUploaderArr
+                    .filter(u => u.getStatus() === UploadStatus.Success)
+                    .map(u => u.getStudyInstanceUid())
+                    .filter(Boolean)
+                )] as string[];
+                onComplete(uniqueUids);
+              }}
             >
               {'Close'}
             </Button>

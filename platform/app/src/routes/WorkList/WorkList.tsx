@@ -39,6 +39,8 @@ import {
 import { Types } from '@ohif/ui';
 
 import { preserveQueryParameters, preserveQueryStrings } from '../../utils/preserveQueryParameters';
+import { registerStudyOwnershipBatch, getMyStudyUids } from '../../routes/Auth/studyApi';
+import { getAccessToken } from '../../routes/Auth/LocalAuthRoutes';
 
 const PatientInfoVisibility = Types.PatientInfoVisibility;
 
@@ -64,7 +66,6 @@ function WorkList({
   const { t } = useTranslation();
   // ~ Modes
   const [appConfig] = useAppConfig();
-  // ~ Filters
   const searchParams = useSearchParams();
   const navigate = useNavigate();
   const STUDIES_LIMIT = 101;
@@ -97,6 +98,17 @@ function WorkList({
     shouldUseDefaultSort && canSort ? { sortBy: 'studyDate', sortDirection: 'ascending' } : {};
   const { customizationService } = servicesManager.services;
 
+  // User data isolation: fetch owned study UIDs
+  const [userOwnedUids, setUserOwnedUids] = useState(null); // null = not loaded yet
+  useEffect(() => {
+    const token = getAccessToken();
+    if (token) {
+      getMyStudyUids(token)
+        .then(uids => setUserOwnedUids(uids))
+        .catch(() => setUserOwnedUids(null));
+    }
+  }, [studies]); // re-fetch when studies change (e.g. after upload refresh)
+
   const sortedStudies = useMemo(() => {
     if (!canSort) {
       return studies;
@@ -127,10 +139,17 @@ function WorkList({
     });
   }, [canSort, studies, shouldUseDefaultSort, sortBy, sortModifier]);
 
+  // Apply user ownership filter (client-side, does not affect data source)
+  const visibleStudies = useMemo(() => {
+    if (userOwnedUids === null) return sortedStudies; // not loaded yet, show all
+    if (userOwnedUids.length === 0) return []; // no owned studies
+    return sortedStudies.filter(s => userOwnedUids.includes(s.studyInstanceUid));
+  }, [sortedStudies, userOwnedUids]);
+
   // ~ Rows & Studies
   const [expandedRows, setExpandedRows] = useState([]);
   const [studiesWithSeriesData, setStudiesWithSeriesData] = useState([]);
-  const numOfStudies = studiesTotal;
+  const numOfStudies = userOwnedUids === null ? studiesTotal : visibleStudies.length;
   const querying = useMemo(() => {
     return isLoadingData || expandedRows.length > 0;
   }, [isLoadingData, expandedRows]);
@@ -250,7 +269,7 @@ function WorkList({
   const rollingPageNumber = (pageNumber - 1) % rollingPageNumberMod;
   const offset = resultsPerPage * rollingPageNumber;
   const offsetAndTake = offset + resultsPerPage;
-  const tableDataSource = sortedStudies.map((study, key) => {
+  const tableDataSource = visibleStudies.map((study, key) => {
     const rowKey = key + 1;
     const isExpanded = expandedRows.some(k => k === rowKey);
     const {
@@ -531,14 +550,21 @@ function WorkList({
           content: () => (
             <DicomUploadComponent
               dataSource={dataSource}
-              onComplete={() => {
+              onComplete={async (studyInstanceUids: string[]) => {
+                try {
+                  const token = getAccessToken();
+                  if (token && studyInstanceUids.length > 0) {
+                    await registerStudyOwnershipBatch(studyInstanceUids, token);
+                  }
+                } catch (e) {
+                  console.warn('Failed to register study ownership:', e);
+                }
                 hide();
                 onRefresh();
               }}
               onStarted={() => {
                 show({
                   ...uploadProps,
-                  // when upload starts, hide the default close button as closing the dialogue must be handled by the upload dialogue itself
                   closeButton: false,
                 });
               }}
