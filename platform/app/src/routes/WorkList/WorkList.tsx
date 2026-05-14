@@ -40,7 +40,7 @@ import { Types } from '@ohif/ui';
 
 import { preserveQueryParameters, preserveQueryStrings } from '../../utils/preserveQueryParameters';
 import { registerStudyOwnershipBatch, getMyStudyUids } from '../../routes/Auth/studyApi';
-import { getAccessToken } from '../../routes/Auth/LocalAuthRoutes';
+import { getAccessToken, OWNED_UIDS_CACHE_KEY } from '../../routes/Auth/LocalAuthRoutes';
 
 const PatientInfoVisibility = Types.PatientInfoVisibility;
 
@@ -99,15 +99,42 @@ function WorkList({
   const { customizationService } = servicesManager.services;
 
   // User data isolation: fetch owned study UIDs
-  const [userOwnedUids, setUserOwnedUids] = useState(null); // null = not loaded yet
+  const [userOwnedUids, setUserOwnedUids] = useState(() => {
+    try {
+      const cached = sessionStorage.getItem(OWNED_UIDS_CACHE_KEY);
+      if (cached) return JSON.parse(cached);
+    } catch {}
+    return null;
+  });
   useEffect(() => {
-    const token = getAccessToken();
-    if (token) {
+    let mounted = true;
+    let retryTimer;
+
+    const fetchOwnership = () => {
+      const token = getAccessToken();
+      if (!token) {
+        retryTimer = setTimeout(fetchOwnership, 500);
+        return;
+      }
       getMyStudyUids(token)
-        .then(uids => setUserOwnedUids(uids))
-        .catch(() => setUserOwnedUids(null));
-    }
-  }, [studies]); // re-fetch when studies change (e.g. after upload refresh)
+        .then(uids => {
+          if (mounted) {
+            setUserOwnedUids(uids);
+            sessionStorage.setItem(OWNED_UIDS_CACHE_KEY, JSON.stringify(uids));
+          }
+        })
+        .catch(() => {
+          if (mounted) setUserOwnedUids(null);
+        });
+    };
+
+    fetchOwnership();
+
+    return () => {
+      mounted = false;
+      clearTimeout(retryTimer);
+    };
+  }, [studies]);
 
   const sortedStudies = useMemo(() => {
     if (!canSort) {
@@ -141,7 +168,7 @@ function WorkList({
 
   // Apply user ownership filter (client-side, does not affect data source)
   const visibleStudies = useMemo(() => {
-    if (userOwnedUids === null) return sortedStudies; // not loaded yet, show all
+    if (userOwnedUids === null) return []; // still loading, show nothing to prevent flash
     if (userOwnedUids.length === 0) return []; // no owned studies
     return sortedStudies.filter(s => userOwnedUids.includes(s.studyInstanceUid));
   }, [sortedStudies, userOwnedUids]);
@@ -149,7 +176,7 @@ function WorkList({
   // ~ Rows & Studies
   const [expandedRows, setExpandedRows] = useState([]);
   const [studiesWithSeriesData, setStudiesWithSeriesData] = useState([]);
-  const numOfStudies = userOwnedUids === null ? studiesTotal : visibleStudies.length;
+  const numOfStudies = userOwnedUids === null ? 0 : visibleStudies.length;
   const querying = useMemo(() => {
     return isLoadingData || expandedRows.length > 0;
   }, [isLoadingData, expandedRows]);

@@ -4,8 +4,13 @@ import { refreshSession } from './authApi';
 
 let accessToken: string | null = null;
 
+export const OWNED_UIDS_CACHE_KEY = 'ohif_owned_uids';
+
 export function setAccessToken(token: string | null) {
   accessToken = token;
+  if (!token) {
+    sessionStorage.removeItem(OWNED_UIDS_CACHE_KEY);
+  }
 }
 
 export function getAccessToken() {
