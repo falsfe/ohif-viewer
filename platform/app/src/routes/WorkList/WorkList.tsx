@@ -124,7 +124,8 @@ function WorkList({
           }
         })
         .catch(() => {
-          if (mounted) setUserOwnedUids(null);
+          // On failure (e.g. refresh also expired), keep existing data
+          // instead of clearing it to prevent all studies from disappearing
         });
     };
 

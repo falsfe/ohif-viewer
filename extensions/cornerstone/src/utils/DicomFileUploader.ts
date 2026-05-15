@@ -148,7 +148,11 @@ export default class DicomFileUploader extends PubSubService {
           // Do the actual upload by supplying the DICOM file and upload callbacks/listeners.
           return this._dataSource.store
             .dicom(dicomFile, request)
-            .then(() => {
+            .then((storeResult) => {
+              // Prefer StudyInstanceUID from Orthanc response over dcmjs parsing
+              if (storeResult?.StudyInstanceUID && !this._studyInstanceUid) {
+                this._studyInstanceUid = storeResult.StudyInstanceUID;
+              }
               this._status = UploadStatus.Success;
               resolve();
             })

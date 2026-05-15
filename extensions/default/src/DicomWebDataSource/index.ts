@@ -394,7 +394,6 @@ function createDicomWebApi(dicomWebConfig: DicomWebConfig, servicesManager) {
       dicom: async (dataset, request, dicomDict) => {
         wadoDicomWebClient.headers = getAuthorizationHeader();
         if (dataset instanceof ArrayBuffer) {
-          // Use Orthanc REST API /instances for reliable uploads (STOW-RS has issues with this Orthanc version)
           const response = await fetch('/orthanc-api/instances', {
             method: 'POST',
             headers: {
@@ -408,6 +407,19 @@ function createDicomWebApi(dicomWebConfig: DicomWebConfig, servicesManager) {
             const errorData = await response.json().catch(() => ({}));
             throw new Error(errorData.Message || `Upload failed: ${response.status}`);
           }
+
+          // Return Orthanc response so caller can extract StudyInstanceUID
+          const orthancResult = await response.json().catch(() => ({}));
+          if (orthancResult.ParentStudy) {
+            try {
+              const studyResp = await fetch(`/orthanc-api/studies/${orthancResult.ParentStudy}`);
+              if (studyResp.ok) {
+                const studyData = await studyResp.json();
+                orthancResult.StudyInstanceUID = studyData.MainDicomTags?.StudyInstanceUID;
+              }
+            } catch {}
+          }
+          return orthancResult;
         } else {
           let effectiveDicomDict = dicomDict;
 
