@@ -176,6 +176,11 @@ module.exports = (env, argv) => {
           target: 'http://localhost:4001',
           changeOrigin: true,
         },
+        {
+          context: ['/api/algo'],
+          target: 'http://192.168.150.101:8000',
+          changeOrigin: true,
+        },
       ],
       static: [
         {

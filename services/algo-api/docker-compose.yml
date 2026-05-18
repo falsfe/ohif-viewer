@@ -1,0 +1,9 @@
+services:
+  algo-api:
+    build: .
+    container_name: algo-api
+    ports:
+      - "8000:8000"
+    environment:
+      - ORTHANC_URL=http://192.168.150.101:8042
+    restart: unless-stopped

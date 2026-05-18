@@ -28,6 +28,7 @@ export const ohif = {
 
 export const cornerstone = {
   measurements: '@ohif/extension-cornerstone.panelModule.panelMeasurement',
+  algorithm: '@ohif/extension-cornerstone.panelModule.panelAlgorithm',
   viewport: '@ohif/extension-cornerstone.viewportModule.cornerstone',
 };
 
@@ -167,7 +168,7 @@ export const mprLayout = {
   props: {
     leftPanels: [ohif.thumbnailList],
     leftPanelResizable: true,
-    rightPanels: [cornerstone.measurements],
+    rightPanels: [cornerstone.algorithm, cornerstone.measurements],
     rightPanelClosed: true,
     rightPanelResizable: true,
     viewports: [

@@ -180,6 +180,9 @@ export default function ModeRoute({
       if (isMounted.current) {
         const { leftPanels = [], rightPanels = [], ...layoutProps } = layoutData.props;
 
+        console.log('[Mode] rightPanels:', rightPanels);
+        console.log('[Mode] route.id:', route.path, 'layoutTemplate:', layoutData.id);
+
         panelService.reset();
         panelService.addPanels(panelService.PanelPosition.Left, leftPanels);
         panelService.addPanels(panelService.PanelPosition.Right, rightPanels);

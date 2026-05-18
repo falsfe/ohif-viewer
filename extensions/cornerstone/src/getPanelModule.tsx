@@ -4,10 +4,12 @@ import { Toolbox } from '@ohif/extension-default';
 import PanelSegmentation from './panels/PanelSegmentation';
 import ActiveViewportWindowLevel from './components/ActiveViewportWindowLevel';
 import PanelMeasurement from './panels/PanelMeasurement';
+import AlgorithmPanel from './components/AlgorithmPanel';
 import { SegmentationRepresentations } from '@cornerstonejs/tools/enums';
 import i18n from '@ohif/i18n';
 
 const getPanelModule = ({ commandsManager, servicesManager, extensionManager }: withAppTypes) => {
+  console.log('[getPanelModule] Loading panels module');
   const { toolbarService } = servicesManager.services;
 
   const toolSectionMap = {
@@ -67,7 +69,7 @@ const getPanelModule = ({ commandsManager, servicesManager, extensionManager }: 
     );
   };
 
-  return [
+  const result = [
     {
       name: 'activeViewportWindowLevel',
       component: () => {
@@ -120,7 +122,19 @@ const getPanelModule = ({ commandsManager, servicesManager, extensionManager }: 
           segmentationRepresentationTypes: [SegmentationRepresentations.Contour],
         }),
     },
+    {
+      name: 'panelAlgorithm',
+      iconName: 'tab-segmentation',
+      iconLabel: 'Algorithm',
+      label: 'Algorithm',
+      component: () => {
+        console.log('[panelAlgorithm] rendering');
+        return <AlgorithmPanel servicesManager={servicesManager} />;
+      },
+    },
   ];
+  console.log('[getPanelModule] Registered panels:', result.map(p => p.name));
+  return result;
 };
 
 export default getPanelModule;
