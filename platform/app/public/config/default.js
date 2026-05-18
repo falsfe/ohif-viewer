@@ -123,6 +123,8 @@ window.config = {
         bulkDataURI: {
           enabled: true,
           relativeResolution: 'studies',
+          startsWith: 'http://192.168.150.101:8042/dicom-web',
+          prefixWith: '/dicomweb',
         },
         omitQuotationForMultipartRequest: true,
         dicomUploadEnabled: true,
