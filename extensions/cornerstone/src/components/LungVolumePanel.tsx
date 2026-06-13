@@ -16,7 +16,7 @@ const store = {
     totalMl: 2691.34,
   },
   error: '',
-  servicesManager: null as any,
+  servicesManager: null as any, // 保留供后端 lung-volume 算法接入
   simTimer: null as ReturnType<typeof setInterval> | null,
 };
 
@@ -27,7 +27,7 @@ function stopSim() {
   }
 }
 
-// 前端模拟运行（不调后端）：进度从 0→100，完成后显示体积并尝试红绿渲染
+// 前端模拟运行（不调后端、不依赖 Algorithm 面板）：进度 0→100，完成后显示 mock 体积
 function startRun() {
   stopSim();
   store.phase = 'running';
@@ -37,104 +37,13 @@ function startRun() {
   store.simTimer = setInterval(() => {
     p += 8 + Math.random() * 12;
     if (p >= 100) {
-      p = 100;
       stopSim();
       store.progress = 100;
       store.phase = 'done';
-      // 尝试对已有分割做红绿渲染（无分割则静默跳过）
-      applyDualColor();
     } else {
       store.progress = Math.floor(p);
     }
   }, 350);
-}
-
-// 按图像 X 中点把已加载的 labelmap 拆成左右肺两段，红/绿双色渲染
-async function applyDualColor() {
-  if (!store.servicesManager) return;
-  const { segmentationService, viewportGridService } = store.servicesManager.services;
-
-  try {
-    const segmentations = segmentationService.getSegmentations();
-    if (!segmentations || segmentations.length === 0) {
-      return; // 无分割，静默跳过
-    }
-    const sourceSeg = segmentations[0];
-    const sourceId = sourceSeg.segmentationId;
-
-    const cstSegmentation = await import('@cornerstonejs/tools').then(m => m.segmentation);
-    const csSeg = cstSegmentation.state.getSegmentation(sourceId);
-    const labelmapData = csSeg?.representationData?.Labelmap;
-    if (!labelmapData?.volumeId) return;
-
-    const { cache: csCache } = await import('@cornerstonejs/core');
-    const srcVolume = csCache.getVolume(labelmapData.volumeId);
-    if (!srcVolume?.voxelManager) return;
-    const srcScalar = srcVolume.voxelManager.getScalarData();
-    const dims = srcVolume.dimensions;
-    const [dimX, dimY, dimZ] = dims;
-    const midX = Math.floor(dimX / 2);
-
-    const { displaySetService } = store.servicesManager.services;
-    const { activeViewportId } = viewportGridService.getState();
-    if (!activeViewportId) return;
-    const displaySetUIDs = viewportGridService.getDisplaySetsUIDsForViewport(activeViewportId);
-    if (!displaySetUIDs?.length) return;
-    const displaySet = displaySetService.getDisplaySetByUID(displaySetUIDs[0]);
-    if (!displaySet) return;
-
-    const segments = {
-      1: { label: 'Right Lung', active: true },
-      2: { label: 'Left Lung', active: true },
-    };
-    const newSegId = await segmentationService.createLabelmapForDisplaySet(displaySet, {
-      segments,
-      label: 'Lung Volume Analysis',
-    });
-
-    const newCsSeg = cstSegmentation.state.getSegmentation(newSegId);
-    const newLabelmapData = newCsSeg?.representationData?.Labelmap;
-    if (newLabelmapData?.volumeId) {
-      const newVolume = csCache.getVolume(newLabelmapData.volumeId);
-      if (newVolume?.voxelManager) {
-        const newScalar = newVolume.voxelManager.getScalarData();
-        for (let z = 0; z < dimZ; z++) {
-          for (let y = 0; y < dimY; y++) {
-            const rowBase = y * dimX + z * dimX * dimY;
-            for (let x = 0; x < dimX; x++) {
-              const idx = rowBase + x;
-              if (srcScalar[idx] > 0) {
-                newScalar[idx] = x < midX ? 1 : 2;
-              }
-            }
-          }
-        }
-        newVolume.voxelManager.setScalarData(newScalar);
-      }
-    }
-
-    const { viewports } = viewportGridService.getState();
-    for (const [vpId] of viewports ?? []) {
-      try {
-        await segmentationService.addSegmentationRepresentation(vpId, {
-          segmentationId: newSegId,
-          type: 'Labelmap' as const,
-        });
-        segmentationService.setSegmentColor(vpId, newSegId, 1, [255, 52, 52, 255]);
-        segmentationService.setSegmentColor(vpId, newSegId, 2, [52, 255, 52, 255]);
-      } catch {}
-    }
-
-    const cs = await import('@cornerstonejs/core');
-    viewports?.forEach((v: any) => {
-      try {
-        const el = cs.getEnabledElementByViewportId(v.viewportId);
-        if (el?.viewport) el.viewport.render();
-      } catch {}
-    });
-  } catch {
-    // 静默跳过
-  }
 }
 
 export default function LungVolumePanel({ servicesManager }: Props) {
@@ -142,6 +51,7 @@ export default function LungVolumePanel({ servicesManager }: Props) {
   const [progress, setProgress] = useState(store.progress);
   const [error, setError] = useState(store.error);
 
+  // 保留 servicesManager 引用，供后端 lung-volume 算法接入时使用
   store.servicesManager = servicesManager;
 
   useEffect(() => {
@@ -223,7 +133,7 @@ export default function LungVolumePanel({ servicesManager }: Props) {
             </div>
           </div>
           <div style={{ fontSize: 11, color: '#888', marginTop: 8 }}>
-            * 当前为占位数据，后端算法接入后显示真实体积
+            * 当前为占位数据，后端算法接入后显示真实体积与红绿渲染
           </div>
         </div>
       )}
