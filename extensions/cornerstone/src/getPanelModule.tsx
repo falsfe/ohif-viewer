@@ -5,6 +5,7 @@ import PanelSegmentation from './panels/PanelSegmentation';
 import ActiveViewportWindowLevel from './components/ActiveViewportWindowLevel';
 import PanelMeasurement from './panels/PanelMeasurement';
 import AlgorithmPanel from './components/AlgorithmPanel';
+import LungVolumePanel from './components/LungVolumePanel';
 import { SegmentationRepresentations } from '@cornerstonejs/tools/enums';
 import i18n from '@ohif/i18n';
 
@@ -130,6 +131,15 @@ const getPanelModule = ({ commandsManager, servicesManager, extensionManager }: 
       component: () => {
         console.log('[panelAlgorithm] rendering');
         return <AlgorithmPanel servicesManager={servicesManager} />;
+      },
+    },
+    {
+      name: 'panelLungVolume',
+      iconName: 'tab-segmentation',
+      iconLabel: 'Lung Volume',
+      label: 'Lung Volume',
+      component: () => {
+        return <LungVolumePanel servicesManager={servicesManager} />;
       },
     },
   ];
