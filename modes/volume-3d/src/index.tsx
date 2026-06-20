@@ -23,6 +23,7 @@ export const cornerstone = {
   measurements: '@ohif/extension-cornerstone.panelModule.panelMeasurement',
   algorithm: '@ohif/extension-cornerstone.panelModule.panelAlgorithm',
   lungVolume: '@ohif/extension-cornerstone.panelModule.panelLungVolume',
+  noduleSphere: '@ohif/extension-cornerstone.panelModule.panelNoduleSphere',
   viewport: '@ohif/extension-cornerstone.viewportModule.cornerstone',
 };
 
@@ -152,7 +153,7 @@ export const volume3DLayout = {
   props: {
     leftPanels: [ohif.thumbnailList],
     leftPanelResizable: true,
-    rightPanels: [cornerstone.algorithm, cornerstone.lungVolume, cornerstone.measurements],
+    rightPanels: [cornerstone.algorithm, cornerstone.lungVolume, cornerstone.noduleSphere, cornerstone.measurements],
     rightPanelClosed: true,
     rightPanelResizable: true,
     viewports: [

@@ -6,6 +6,7 @@ import ActiveViewportWindowLevel from './components/ActiveViewportWindowLevel';
 import PanelMeasurement from './panels/PanelMeasurement';
 import AlgorithmPanel from './components/AlgorithmPanel';
 import LungVolumePanel from './components/LungVolumePanel';
+import NoduleSpherePanel from './components/NoduleSpherePanel';
 import { SegmentationRepresentations } from '@cornerstonejs/tools/enums';
 import i18n from '@ohif/i18n';
 
@@ -140,6 +141,15 @@ const getPanelModule = ({ commandsManager, servicesManager, extensionManager }: 
       label: 'Lung Volume',
       component: () => {
         return <LungVolumePanel servicesManager={servicesManager} />;
+      },
+    },
+    {
+      name: 'panelNoduleSphere',
+      iconName: 'tab-segmentation',
+      iconLabel: 'Nodule Sphere',
+      label: 'Nodule Sphere',
+      component: () => {
+        return <NoduleSpherePanel servicesManager={servicesManager} />;
       },
     },
   ];

@@ -34,6 +34,7 @@ class RunRequest(BaseModel):
     algorithmId: str
     studyInstanceUID: str
     seriesInstanceUID: str | None = None
+    params: Dict[str, Any] = {}
 
 
 @app.get("/api/algo/algorithms")
@@ -61,7 +62,7 @@ def run_algorithm(req: RunRequest):
 
     thread = threading.Thread(
         target=_run_task,
-        args=(task_id, algo["fn"], req.studyInstanceUID, req.seriesInstanceUID),
+        args=(task_id, algo["fn"], req.studyInstanceUID, req.seriesInstanceUID, req.params),
         daemon=True,
     )
     thread.start()
@@ -112,16 +113,19 @@ def get_result(task_id: str):
     )
 
 
-def _run_task(task_id: str, algo_fn, study_uid: str, series_uid: str | None):
+def _run_task(task_id: str, algo_fn, study_uid: str, series_uid: str | None, params: Dict[str, Any]):
     tmp_dir = None
     result_dir = None
     try:
         tasks[task_id]["status"] = "running"
         tasks[task_id]["progress"] = 10
 
+        # 前端必须传 CT 的 seriesInstanceUID(否则 _find_series 会拿到 study 第一个 series)
+        if not series_uid:
+            raise ValueError("seriesInstanceUID is required (must be the CT series)")
         series_id = _find_series(study_uid, series_uid)
         if not series_id:
-            raise ValueError(f"No series found for study {study_uid}")
+            raise ValueError(f"No CT series found for study {study_uid}")
 
         tasks[task_id]["progress"] = 20
 
@@ -131,19 +135,37 @@ def _run_task(task_id: str, algo_fn, study_uid: str, series_uid: str | None):
 
         for i, instance_id in enumerate(instances):
             _download_instance(instance_id, tmp_dir, i)
-            tasks[task_id]["progress"] = 20 + int(50 * (i + 1) / total)
+            tasks[task_id]["progress"] = 20 + int(40 * (i + 1) / total)
 
-        tasks[task_id]["progress"] = 75
+        # nodule-sphere 专属:自动从同 study 找 RTSTRUCT,注入 params["mask_path"]
+        algo_id = tasks[task_id]["algorithmId"]
+        if algo_id == "nodule-sphere" and not params.get("mask_path"):
+            tasks[task_id]["progress"] = 62
+            rtstruct_path = _find_and_download_rtstruct(study_uid, tmp_dir)
+            if not rtstruct_path:
+                raise ValueError(
+                    f"No RTSTRUCT series found in study {study_uid}. "
+                    "Upload an RTSTRUCT to the same study or set params.mask_path."
+                )
+            params = {**params, "mask_path": rtstruct_path}
+        tasks[task_id]["progress"] = 70
 
         output_path = os.path.join(tmp_dir, "result.nii.gz")
-        metadata = algo_fn(tmp_dir, output_path, {})
+        metadata = algo_fn(tmp_dir, output_path, params)
         tasks[task_id]["progress"] = 95
 
-        result_dir = tempfile.mkdtemp()
-        final_path = os.path.join(result_dir, "result.nii.gz")
-        shutil.move(output_path, final_path)
+        # 兼容无 labelmap 输出(本算法返回 _no_labelmap=True;lung_seg/mock_seg 仍走 else)
+        no_labelmap = bool((metadata or {}).get("_no_labelmap") or not os.path.exists(output_path))
+        if no_labelmap:
+            tasks[task_id]["resultPath"] = None
+            if os.path.exists(output_path):
+                os.remove(output_path)
+        else:
+            result_dir = tempfile.mkdtemp()
+            final_path = os.path.join(result_dir, "result.nii.gz")
+            shutil.move(output_path, final_path)
+            tasks[task_id]["resultPath"] = final_path
 
-        tasks[task_id]["resultPath"] = final_path
         tasks[task_id]["metadata"] = metadata
         tasks[task_id]["status"] = "success"
         tasks[task_id]["progress"] = 100
@@ -200,6 +222,47 @@ def _download_instance(instance_id: str, output_dir: str, index: int):
     filepath = os.path.join(output_dir, f"{index:06d}.dcm")
     with open(filepath, "wb") as f:
         f.write(resp.content)
+
+
+def _find_and_download_rtstruct(study_uid: str, parent_tmp_dir: str) -> str | None:
+    """在同 study 下找 Modality=RTSTRUCT 的 series,下载其 instance 到
+    parent_tmp_dir/RTSTRUCT/<index>.dcm,返回该 .dcm 路径。
+
+    多个 RTSTRUCT 取第一个;无则返回 None。
+    RTSTRUCT 放独立子目录,是为满足算法 _is_rtstruct 的"父目录名含 RTSTRUCT"判定。
+    """
+    resp = http_requests.post(
+        f"{ORTHANC_URL}/tools/find",
+        json={"Level": "Study", "Query": {"StudyInstanceUID": study_uid}},
+        timeout=30,
+    )
+    resp.raise_for_status()
+    study_ids = resp.json()
+    if not study_ids:
+        return None
+    study_id = study_ids[0]
+
+    resp = http_requests.get(f"{ORTHANC_URL}/studies/{study_id}/series", timeout=30)
+    resp.raise_for_status()
+
+    rtstruct_series = None
+    for s in resp.json():
+        try:
+            meta = http_requests.get(f"{ORTHANC_URL}/series/{s['ID']}", timeout=30).json()
+            if meta.get("MainDicomTags", {}).get("Modality") == "RTSTRUCT":
+                rtstruct_series = s["ID"]  # 多个时取第一个
+                break
+        except Exception:
+            continue
+    if not rtstruct_series:
+        return None
+
+    rtstruct_dir = os.path.join(parent_tmp_dir, "RTSTRUCT")  # 满足算法 _is_rtstruct 判定
+    os.makedirs(rtstruct_dir, exist_ok=True)
+    for i, inst_id in enumerate(_get_series_instances(rtstruct_series)):
+        _download_instance(inst_id, rtstruct_dir, i)
+    dcm_files = sorted(f for f in os.listdir(rtstruct_dir) if f.endswith(".dcm"))
+    return os.path.join(rtstruct_dir, dcm_files[0]) if dcm_files else None
 
 
 if __name__ == "__main__":
