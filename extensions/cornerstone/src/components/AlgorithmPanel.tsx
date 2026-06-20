@@ -110,8 +110,18 @@ async function displayResult(taskId: string, selectedAlgo: string) {
 
     const { viewportGridService: vgs } = store.servicesManager.services;
     const { viewports } = vgs.getState();
+    const cs = await import('@cornerstonejs/core');
+    const { ViewportType } = await import('@cornerstonejs/core/enums');
     for (const [vpId] of viewports ?? []) {
       try {
+        // Skip VOLUME_3D viewports: OHIF's SegmentationService forces a Surface
+        // representation there (see handleVolumeViewportCase), and that surface
+        // computation crashes on viewport layout changes (double-click enlarge/
+        // restore) because Cornerstone dereferences a null segment color before
+        // its null-check (bug in createAndCacheSurfacesFromRaw). Labelmap still
+        // renders on MPR/volume viewports, which is where segmentation is shown.
+        const el = cs.getEnabledElementByViewportId(vpId);
+        if (el?.viewport?.type === ViewportType.VOLUME_3D) continue;
         await segmentationService.addSegmentationRepresentation(vpId, {
           segmentationId: segId,
           type: 'Labelmap' as const,
@@ -119,7 +129,6 @@ async function displayResult(taskId: string, selectedAlgo: string) {
       } catch {}
     }
 
-    const cs = await import('@cornerstonejs/core');
     viewports?.forEach((v: any) => {
       try {
         const el = cs.getEnabledElementByViewportId(v.viewportId);
