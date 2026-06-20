@@ -33,6 +33,9 @@ const store = {
   roiName: 'GTV-1',
   threshold: -160,
   mode: 'approx' as 'approx' | 'exact',
+  showInscribed: true,
+  showCircumscribed: true,
+  servicesManager: null as any,
   pollTimer: null as ReturnType<typeof setInterval> | null,
 };
 
@@ -41,6 +44,55 @@ function stopPolling() {
     clearInterval(store.pollTimer);
     store.pollTimer = null;
   }
+}
+
+const NODULE_SPHERE_TOOL_NAME = 'NoduleSphereOverlay';
+
+// 把 nodules 写入工具 configuration 并激活工具,让球截面圆显示在所有 CT 视口
+function applyNodulesToTool(nodules: Nodule[], showInscribed: boolean, showCircumscribed: boolean) {
+  const sm = store.servicesManager;
+  if (!sm) return;
+  const { toolGroupService, cornerstoneViewportService, viewportGridService } = sm.services;
+  const renderingEngine = cornerstoneViewportService.getRenderingEngine?.();
+  if (!renderingEngine) return;
+
+  // 对每个视口的 toolGroup 注入配置并激活(三视图通常同一 toolGroup,遍历以保险)
+  const { viewports } = viewportGridService.getState();
+  const handledGroups = new Set<string>();
+  for (const [vpId] of viewports ?? []) {
+    const toolGroup = toolGroupService.getToolGroupForViewport?.(vpId);
+    if (!toolGroup || handledGroups.has(toolGroup.id)) continue;
+    handledGroups.add(toolGroup.id);
+    try {
+      toolGroup.setToolConfiguration(NODULE_SPHERE_TOOL_NAME, {
+        nodules,
+        showInscribed,
+        showCircumscribed,
+      });
+      toolGroup.setToolEnabled(NODULE_SPHERE_TOOL_NAME);
+    } catch {}
+  }
+  renderingEngine.render();
+}
+
+// 关闭工具并清空(切换 study / 卸载面板时调用)
+function clearNodulesFromTool() {
+  const sm = store.servicesManager;
+  if (!sm) return;
+  const { toolGroupService, cornerstoneViewportService, viewportGridService } = sm.services;
+  const renderingEngine = cornerstoneViewportService.getRenderingEngine?.();
+  const { viewports } = viewportGridService.getState();
+  const handledGroups = new Set<string>();
+  for (const [vpId] of viewports ?? []) {
+    const toolGroup = toolGroupService.getToolGroupForViewport?.(vpId);
+    if (!toolGroup || handledGroups.has(toolGroup.id)) continue;
+    handledGroups.add(toolGroup.id);
+    try {
+      toolGroup.setToolConfiguration(NODULE_SPHERE_TOOL_NAME, { nodules: [] });
+      toolGroup.setToolDisabled(NODULE_SPHERE_TOOL_NAME);
+    } catch {}
+  }
+  renderingEngine?.render?.();
 }
 
 // 后台轮询(独立于组件生命周期)。第一阶段关键差异:success 时直接读
@@ -63,6 +115,7 @@ function startPolling() {
           stopPolling();
           store.nodules = (data.metadata?.nodules as Nodule[]) || [];
           store.phase = 'done';
+          applyNodulesToTool(store.nodules, store.showInscribed, store.showCircumscribed);
         } else if (data.status === 'failed') {
           stopPolling();
           store.phase = 'failed';
@@ -84,6 +137,11 @@ export default function NoduleSpherePanel({ servicesManager }: Props) {
   const [roiName, setRoiName] = useState(store.roiName);
   const [threshold, setThreshold] = useState(store.threshold);
   const [mode, setMode] = useState(store.mode);
+  const [showInscribed, setShowInscribed] = useState(store.showInscribed);
+  const [showCircumscribed, setShowCircumscribed] = useState(store.showCircumscribed);
+
+  // 保留 servicesManager 引用供模块级函数使用
+  store.servicesManager = servicesManager;
 
   // store → React state 每 500ms 同步(复用 AlgorithmPanel:191-198)
   useEffect(() => {
@@ -100,6 +158,28 @@ export default function NoduleSpherePanel({ servicesManager }: Props) {
   useEffect(() => { store.roiName = roiName; }, [roiName]);
   useEffect(() => { store.threshold = threshold; }, [threshold]);
   useEffect(() => { store.mode = mode; }, [mode]);
+  useEffect(() => { store.showInscribed = showInscribed; }, [showInscribed]);
+  useEffect(() => { store.showCircumscribed = showCircumscribed; }, [showCircumscribed]);
+
+  // 开关变化:若已有结节结果,实时更新工具显示
+  const toggleShow = (kind: 'showInscribed' | 'showCircumscribed', val: boolean) => {
+    if (kind === 'showInscribed') setShowInscribed(val);
+    else setShowCircumscribed(val);
+    if (store.nodules.length) {
+      applyNodulesToTool(
+        store.nodules,
+        kind === 'showInscribed' ? val : store.showInscribed,
+        kind === 'showCircumscribed' ? val : store.showCircumscribed
+      );
+    }
+  };
+
+  // 面板卸载:关闭工具,避免球残留在视口
+  useEffect(() => {
+    return () => {
+      clearNodulesFromTool();
+    };
+  }, []);
 
   const handleRun = useCallback(async () => {
     setError('');
@@ -288,6 +368,26 @@ export default function NoduleSpherePanel({ servicesManager }: Props) {
       )}
 
       {error && <p style={{ fontSize: 12, color: '#f44336', marginTop: 8 }}>{error}</p>}
+
+      {/* 显示开关 */}
+      <div style={{ marginTop: 12, marginBottom: 8, fontSize: 12, color: '#ccc', display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <label>
+          <input
+            type="checkbox"
+            checked={showInscribed}
+            onChange={e => toggleShow('showInscribed', e.target.checked)}
+          />{' '}
+          显示内切球(蓝)
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={showCircumscribed}
+            onChange={e => toggleShow('showCircumscribed', e.target.checked)}
+          />{' '}
+          显示外接球(红)
+        </label>
+      </div>
 
       {/* 结果表格:第一阶段核心产出 */}
       {phase === 'done' && nodules.length > 0 && (
