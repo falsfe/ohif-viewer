@@ -160,6 +160,14 @@ const toolbarButtons: Button[] = [
       evaluate: 'evaluate.dataOverlayMenu',
     },
   },
+  {
+    id: 'Layout',
+    uiType: 'ohif.layoutSelector',
+    props: {
+      rows: 3,
+      columns: 4,
+    },
+  },
 ];
 
 export default toolbarButtons;

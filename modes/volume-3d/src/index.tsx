@@ -24,6 +24,7 @@ export const cornerstone = {
   algorithm: '@ohif/extension-cornerstone.panelModule.panelAlgorithm',
   lungVolume: '@ohif/extension-cornerstone.panelModule.panelLungVolume',
   noduleSphere: '@ohif/extension-cornerstone.panelModule.panelNoduleSphere',
+  lungCompare: '@ohif/extension-cornerstone.panelModule.panelLungCompare',
   viewport: '@ohif/extension-cornerstone.viewportModule.cornerstone',
 };
 
@@ -139,6 +140,7 @@ export const toolbarSections = {
     'Crosshairs',
     'Reset',
     'Capture',
+    'Layout',
   ],
 
   [TOOLBAR_SECTIONS.viewportActionMenu.topLeft]: ['orientationMenu'],
@@ -153,7 +155,7 @@ export const volume3DLayout = {
   props: {
     leftPanels: [ohif.thumbnailList],
     leftPanelResizable: true,
-    rightPanels: [cornerstone.algorithm, cornerstone.lungVolume, cornerstone.noduleSphere, cornerstone.measurements],
+    rightPanels: [cornerstone.algorithm, cornerstone.lungVolume, cornerstone.noduleSphere, cornerstone.lungCompare, cornerstone.measurements],
     rightPanelClosed: true,
     rightPanelResizable: true,
     viewports: [

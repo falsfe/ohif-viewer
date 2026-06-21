@@ -31,6 +31,7 @@ export const cornerstone = {
   algorithm: '@ohif/extension-cornerstone.panelModule.panelAlgorithm',
   lungVolume: '@ohif/extension-cornerstone.panelModule.panelLungVolume',
   noduleSphere: '@ohif/extension-cornerstone.panelModule.panelNoduleSphere',
+  lungCompare: '@ohif/extension-cornerstone.panelModule.panelLungCompare',
   labelMapSegmentationPanel:
     '@ohif/extension-cornerstone.panelModule.panelSegmentationWithToolsLabelMap',
   contourSegmentationPanel:
@@ -289,7 +290,7 @@ export const basicLayout = {
   props: {
     leftPanels: [ohif.thumbnailList],
     leftPanelResizable: true,
-    rightPanels: [cornerstone.segmentation, cornerstone.algorithm, cornerstone.lungVolume, cornerstone.noduleSphere, cornerstone.measurements],
+    rightPanels: [cornerstone.segmentation, cornerstone.algorithm, cornerstone.lungVolume, cornerstone.noduleSphere, cornerstone.lungCompare, cornerstone.measurements],
     rightPanelClosed: false,
     rightPanelResizable: true,
     viewports: [

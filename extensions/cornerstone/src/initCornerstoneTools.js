@@ -51,7 +51,6 @@ import * as polySeg from '@cornerstonejs/polymorphic-segmentation';
 
 import CalibrationLineTool from './tools/CalibrationLineTool';
 import ImageOverlayViewerTool from './tools/ImageOverlayViewerTool';
-import NoduleSphereOverlayTool from './tools/NoduleSphereOverlayTool';
 
 export default function initCornerstoneTools(configuration = {}) {
   CrosshairsTool.isAnnotation = false;
@@ -100,7 +99,6 @@ export default function initCornerstoneTools(configuration = {}) {
   addTool(CalibrationLineTool);
   addTool(TrackballRotateTool);
   addTool(ImageOverlayViewerTool);
-  addTool(NoduleSphereOverlayTool);
   addTool(AdvancedMagnifyTool);
   addTool(UltrasoundDirectionalTool);
   addTool(UltrasoundPleuraBLineTool);

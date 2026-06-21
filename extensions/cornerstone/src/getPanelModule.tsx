@@ -6,6 +6,7 @@ import ActiveViewportWindowLevel from './components/ActiveViewportWindowLevel';
 import PanelMeasurement from './panels/PanelMeasurement';
 import AlgorithmPanel from './components/AlgorithmPanel';
 import LungVolumePanel from './components/LungVolumePanel';
+import LungComparePanel from './components/LungComparePanel';
 import NoduleSpherePanel from './components/NoduleSpherePanel';
 import { SegmentationRepresentations } from '@cornerstonejs/tools/enums';
 import i18n from '@ohif/i18n';
@@ -150,6 +151,15 @@ const getPanelModule = ({ commandsManager, servicesManager, extensionManager }: 
       label: 'Nodule Sphere',
       component: () => {
         return <NoduleSpherePanel servicesManager={servicesManager} />;
+      },
+    },
+    {
+      name: 'panelLungCompare',
+      iconName: 'tab-segmentation',
+      iconLabel: 'Lung Compare',
+      label: 'Lung Compare',
+      component: () => {
+        return <LungComparePanel servicesManager={servicesManager} />;
       },
     },
   ];
