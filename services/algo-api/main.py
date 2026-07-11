@@ -131,7 +131,17 @@ def _run_task(task_id: str, algo_fn, study_uid: str, series_uid: str | None, par
         tasks[task_id]["progress"] = 20
 
         tmp_dir = tempfile.mkdtemp()
-        instances = _get_series_instances(series_id)
+        # max_slices 快速模式:只取中间 N 片(由前端 params.max_slices 控制)
+        all_instances = _get_series_instances(series_id)
+        total_all = len(all_instances)
+        max_slices = int(params.get("max_slices", 0) or 0)
+        if max_slices > 0 and max_slices < total_all:
+            _start = (total_all - max_slices) // 2
+            instances = all_instances[_start:_start + max_slices]
+            tasks[task_id]["message"] = f"快速模式:中间 {max_slices}/{total_all} 片"
+        else:
+            instances = all_instances
+            _start = 0
         total = len(instances)
 
         for i, instance_id in enumerate(instances):
@@ -161,6 +171,21 @@ def _run_task(task_id: str, algo_fn, study_uid: str, series_uid: str | None, par
 
         metadata = algo_fn(tmp_dir, output_path, {"progress_callback": progress_cb, **params})
         tasks[task_id]["progress"] = 95
+
+        # max_slices 取部分片时,把 labelmap pad 回 total_all(中间位置,前后填 0),
+        # 保证和前端 CT volume 同 shape
+        if _start > 0 or len(instances) < total_all:
+            if os.path.exists(output_path):
+                try:
+                    nii = nib.load(output_path)
+                    data = np.asanyarray(nii.dataobj).astype(np.uint8)
+                    if len(data.shape) == 3 and data.shape[0] < total_all:
+                        padded = np.zeros((total_all,) + data.shape[1:], dtype=np.uint8)
+                        padded[_start:_start + data.shape[0]] = data
+                        nib.save(nib.Nifti1Image(padded, nii.affine), output_path)
+                        metadata["shape"] = list(padded.shape)
+                except Exception:
+                    pass
 
         # 兼容无 labelmap 输出(本算法返回 _no_labelmap=True;lung_seg/mock_seg 仍走 else)
         no_labelmap = bool((metadata or {}).get("_no_labelmap") or not os.path.exists(output_path))

@@ -6,6 +6,7 @@ import { only3D } from './hps/only3D';
 import { primary3D } from './hps/primary3D';
 import { primaryAxial } from './hps/primaryAxial';
 import { frameView } from './hps/frameView';
+import { lungCompare1x2 } from './hps/lungCompare1x2';
 
 function getHangingProtocolModule() {
   return [
@@ -40,6 +41,10 @@ function getHangingProtocolModule() {
     {
       name: frameView.id,
       protocol: frameView,
+    },
+    {
+      name: lungCompare1x2.id,
+      protocol: lungCompare1x2,
     },
   ];
 }

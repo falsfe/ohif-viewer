@@ -25,6 +25,7 @@ const store = {
   rendered: new Set<string>(),
   // 当前选的算法 + 比对的两个视口(按 StudyDate: pre=早/post=晚)
   selectedAlgo: 'lung-parenchyma-seg',
+  fastMode: false,
   volStats: { pre: null as any, post: null as any },
 };
 
@@ -36,19 +37,34 @@ function stopPolling() {
 }
 
 // 识别当前视口及其 displaySet，按 StudyDate 排序（pre=早 在前）
+// 多视口显示同一 study 时只取第一个(去重),适配 2×2 等多视口布局
 function getViewportsForCompare() {
   const { viewportGridService, displaySetService } = store.servicesManager.services;
   const { viewports } = viewportGridService.getState();
   const result: { viewportId: string; displaySet: any; studyDate: string }[] = [];
+  const seenStudy = new Set<string>();
   for (const [vpId] of viewports ?? []) {
     const dsUIDs = viewportGridService.getDisplaySetsUIDsForViewport(vpId);
     if (!dsUIDs?.length) continue;
     const ds = displaySetService.getDisplaySetByUID(dsUIDs[0]);
     if (!ds?.StudyInstanceUID) continue;
+    if (seenStudy.has(ds.StudyInstanceUID)) continue; // 同 study 只取第一个视口
+    seenStudy.add(ds.StudyInstanceUID);
     result.push({ viewportId: vpId, displaySet: ds, studyDate: ds.StudyDate || '' });
   }
   result.sort((a, b) => (a.studyDate || '').localeCompare(b.studyDate || ''));
   return result;
+}
+
+// 切换到 1×2 双 2D 对比布局(专用 hangingProtocol,不受 3D 视口影响)
+function switchToCompareLayout() {
+  const sm = store.servicesManager;
+  if (!sm) return;
+  try {
+    sm.services.hangingProtocolService?.setProtocol?.('lungCompare1x2');
+  } catch (e: any) {
+    store.error = `切换布局失败：${e?.message || '未知'}`;
+  }
 }
 
 // 对两个视口各跑选中的算法
@@ -77,6 +93,7 @@ async function runComparison() {
           algorithmId: store.selectedAlgo,
           studyInstanceUID: vp.displaySet.StudyInstanceUID,
           seriesInstanceUID: vp.displaySet.SeriesInstanceUID,
+          params: store.fastMode ? { max_slices: 100 } : {},
         }),
       });
       const data = await res.json();
@@ -258,10 +275,12 @@ export default function LungComparePanel({ servicesManager }: Props) {
   const [progress, setProgress] = useState(store.progress);
   const [error, setError] = useState(store.error);
   const [selectedAlgo, setSelectedAlgo] = useState(store.selectedAlgo);
+  const [fastMode, setFastMode] = useState(store.fastMode);
   const [volStats, setVolStats] = useState(store.volStats);
 
   store.servicesManager = servicesManager;
   useEffect(() => { store.selectedAlgo = selectedAlgo; }, [selectedAlgo]);
+  useEffect(() => { store.fastMode = fastMode; }, [fastMode]);
 
   useEffect(() => {
     const sync = setInterval(() => {
@@ -285,6 +304,14 @@ export default function LungComparePanel({ servicesManager }: Props) {
     <div style={{ padding: 16, color: '#fff', height: '100%', overflowY: 'auto' }}>
       <h3 style={{ margin: '0 0 12px 0', fontSize: 14 }}>肺体积对比</h3>
 
+      {/* 一键切换 1×2 双 2D 对比布局 */}
+      <button
+        onClick={() => switchToCompareLayout()}
+        style={{ width: '100%', padding: 6, marginBottom: 12, borderRadius: 4, border: '1px solid #329ce8', background: 'transparent', color: '#329ce8', cursor: 'pointer', fontSize: 12 }}
+      >
+        ⊕ 切换到 1×2 对比布局(双轴位 2D)
+      </button>
+
       {/* 算法选择 */}
       <div style={{ marginBottom: 10 }}>
         <div style={{ fontSize: 12, color: '#ccc', marginBottom: 4 }}>分割算法</div>
@@ -297,6 +324,12 @@ export default function LungComparePanel({ servicesManager }: Props) {
           {ALGOS.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
         </select>
       </div>
+
+      {/* 快速模式 */}
+      <label style={{ display: 'flex', alignItems: 'center', fontSize: 12, color: '#ccc', marginBottom: 10 }}>
+        <input type="checkbox" checked={fastMode} onChange={e => setFastMode(e.target.checked)} disabled={isBusy} style={{ marginRight: 6 }} />
+        快速模式(只跑中间100片,约2分钟/侧,体积为估算)
+      </label>
 
       <button
         onClick={() => runComparison()}
