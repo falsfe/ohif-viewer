@@ -1,0 +1,6 @@
+logs_Trans
+logs_parenchyma
+saved_results
+__pycache__
+*.pyc
+.git

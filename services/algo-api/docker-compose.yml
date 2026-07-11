@@ -1,9 +1,20 @@
 services:
   algo-api:
-    build: .
+    build:
+      context: .
+      args:
+        # build 时让 apt-get / pip 走宿主机代理(国外源加速)
+        HTTP_PROXY: http://192.168.150.1:7897
+        HTTPS_PROXY: http://192.168.150.1:7897
     container_name: algo-api
     ports:
       - "8000:8000"
     environment:
       - ORTHANC_URL=http://192.168.150.101:8042
+      - LUNG_MODEL_DIR=/app/logs_Trans
+      - PARENCHYMA_MODEL_DIR=/app/logs_parenchyma
+      - MGANET_DIR=/app
+    volumes:
+      - ./logs_Trans:/app/logs_Trans:ro
+      - ./logs_parenchyma:/app/logs_parenchyma:ro
     restart: unless-stopped

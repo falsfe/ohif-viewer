@@ -1,4 +1,5 @@
 import os
+import json
 import uuid
 import tempfile
 import gzip
@@ -76,7 +77,7 @@ def get_task_status(task_id: str):
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
-    resp = {"status": task["status"], "progress": task["progress"]}
+    resp = {"status": task["status"], "progress": task["progress"], "message": task.get("message", "")}
     if task["status"] == "success" and task["metadata"]:
         resp["metadata"] = task["metadata"]
     if task["status"] == "failed":
@@ -107,7 +108,7 @@ def get_result(task_id: str):
         media_type="application/octet-stream",
         headers={
             "X-Labelmap-Shape": str(shape),
-            "X-Labelmap-Labels": str(labels).replace("'", '"'),
+            "X-Labelmap-Labels": json.dumps(labels),
             "X-Labelmap-Dtype": "uint8",
         },
     )
@@ -151,7 +152,14 @@ def _run_task(task_id: str, algo_fn, study_uid: str, series_uid: str | None, par
         tasks[task_id]["progress"] = 70
 
         output_path = os.path.join(tmp_dir, "result.nii.gz")
-        metadata = algo_fn(tmp_dir, output_path, params)
+
+        # 进度回调:肺部分割等算法用它报告内部进度(映射到 70-95),并携带进度消息
+        def progress_cb(progress_pct, message=""):
+            tasks[task_id]["progress"] = 70 + int(progress_pct * 25 / 100)
+            if message:
+                tasks[task_id]["message"] = message
+
+        metadata = algo_fn(tmp_dir, output_path, {"progress_callback": progress_cb, **params})
         tasks[task_id]["progress"] = 95
 
         # 兼容无 labelmap 输出(本算法返回 _no_labelmap=True;lung_seg/mock_seg 仍走 else)

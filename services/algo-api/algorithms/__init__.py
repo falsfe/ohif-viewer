@@ -25,3 +25,5 @@ def list_all():
 from algorithms import mock_seg  # noqa: E402, F401
 from algorithms import lung_seg  # noqa: E402, F401
 from algorithms import nodule_sphere  # noqa: E402, F401
+from algorithms import lung_parenchyma_seg  # noqa: E402, F401
+from algorithms import lung_lobe_seg  # noqa: E402, F401
