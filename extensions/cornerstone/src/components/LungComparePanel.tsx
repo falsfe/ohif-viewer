@@ -296,7 +296,8 @@ export default function LungComparePanel({ servicesManager }: Props) {
   const pre = volStats.pre, post = volStats.post;
   const hasBoth = pre && post && pre.total_ml != null && post.total_ml != null;
   const delta = hasBoth ? post.total_ml - pre.total_ml : 0;
-  const deltaPct = hasBoth && pre.total_ml ? ((delta / pre.total_ml) * 100).toFixed(1) : '0';
+  const leftDelta = hasBoth ? (post.left_lung_ml ?? 0) - (pre.left_lung_ml ?? 0) : 0;
+  const rightDelta = hasBoth ? (post.right_lung_ml ?? 0) - (pre.right_lung_ml ?? 0) : 0;
 
   const colStyle: React.CSSProperties = { flex: 1, background: '#1c1c1c', borderRadius: 6, padding: 10, fontSize: 12 };
 
@@ -360,14 +361,28 @@ export default function LungComparePanel({ servicesManager }: Props) {
               <VolRows stats={post} />
             </div>
           </div>
-          {hasBoth && (
-            <div style={{ background: '#2a2a3a', borderRadius: 6, padding: 10, marginTop: 8, fontSize: 13 }}>
-              <span>总体积变化 Δ </span>
-              <span style={{ color: delta < 0 ? '#ff6b6b' : '#6bff6b', fontWeight: 700 }}>
-                {delta > 0 ? '+' : ''}{delta.toFixed(2)} mL ({deltaPct}%)
-              </span>
-            </div>
-          )}
+          {hasBoth && (() => {
+            const rows = [
+              { label: '左肺变化', d: leftDelta, base: pre.left_lung_ml },
+              { label: '右肺变化', d: rightDelta, base: pre.right_lung_ml },
+              { label: '总体积变化', d: delta, base: pre.total_ml, last: true },
+            ];
+            return (
+              <div style={{ background: '#2a2a3a', borderRadius: 6, padding: 10, marginTop: 8, fontSize: 12 }}>
+                {rows.map(r => {
+                  const pct = r.base ? ((r.d / r.base) * 100).toFixed(1) : '0';
+                  return (
+                    <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderTop: r.last ? '1px solid #444' : 'none', fontWeight: r.last ? 700 : 400 }}>
+                      <span>{r.label} Δ</span>
+                      <span style={{ color: r.d < 0 ? '#ff6b6b' : '#6bff6b' }}>
+                        {r.d > 0 ? '+' : ''}{r.d.toFixed(2)} mL ({pct}%)
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
           {post?.lobes && (
             <div style={{ fontSize: 10, color: '#999', marginTop: 8 }}>
               <div style={{ marginBottom: 2 }}>术后各叶:</div>
