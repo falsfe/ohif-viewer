@@ -12,6 +12,14 @@ const ALGOS = [
   { id: 'lung-lobe-seg', name: '肺叶分割(5 叶)' },
 ];
 
+// 布局循环切换列表(点"循环切换"按钮按顺序切方向:轴位→冠状→矢状→3D)
+const LAYOUTS = [
+  { id: 'lungCompareAxial1x2', name: '轴位对比' },
+  { id: 'lungCompareCoronal1x2', name: '冠状位对比' },
+  { id: 'lungCompareSagittal1x2', name: '矢状位对比' },
+  { id: 'lungCompare3D1x2', name: '3D 对比' },
+];
+
 // 模块级 store：面板切换/卸载时保留状态
 const store = {
   phase: '' as Phase,
@@ -27,6 +35,8 @@ const store = {
   selectedAlgo: 'lung-parenchyma-seg',
   fastMode: false,
   volStats: { pre: null as any, post: null as any },
+  layoutIndex: 0,
+  layoutName: LAYOUTS[0].name,
 };
 
 function stopPolling() {
@@ -60,11 +70,65 @@ function getViewportsForCompare() {
 function switchToCompareLayout() {
   const sm = store.servicesManager;
   if (!sm) return;
+  const vps = getViewportsForCompare();  // 记术前/术后
   try {
-    sm.services.hangingProtocolService?.setProtocol?.('lungCompare1x2');
+    sm.services.hangingProtocolService?.setProtocol?.('lungCompareAxial1x2');
+    store.layoutIndex = 0;
+    store.layoutName = LAYOUTS[0].name;
+    refillCompareViewports(vps);  // 自动重填 + 充满
   } catch (e: any) {
     store.error = `切换布局失败：${e?.message || '未知'}`;
   }
+}
+
+// 循环切换布局:点一下切到下一个视图(1×2对比 → MPR+3D → MPR → 循环)
+function switchNextLayout() {
+  const sm = store.servicesManager;
+  if (!sm) return;
+  const vps = getViewportsForCompare();  // 切换前记术前/术后(按 StudyDate 早=左 晚=右)
+  store.layoutIndex = (store.layoutIndex + 1) % LAYOUTS.length;
+  const next = LAYOUTS[store.layoutIndex];
+  try {
+    sm.services.hangingProtocolService?.setProtocol?.(next.id);
+    store.layoutName = next.name;
+    refillCompareViewports(vps);  // 切换后自动重填数据 + 充满
+  } catch (e: any) {
+    store.error = `切换布局失败：${e?.message || '未知'}`;
+  }
+}
+
+// 切换布局后重置两视口缩放(确保都充满,避免 camera 同步时序导致缩放不一致)
+function resetCompareViewports() {
+  const sm = store.servicesManager;
+  if (!sm) return;
+  const { cornerstoneViewportService } = sm.services;
+  setTimeout(() => {
+    for (const vpId of ['compare-left', 'compare-right']) {
+      try { cornerstoneViewportService.getCornerstoneViewport?.(vpId)?.resetCamera?.(); } catch {}
+    }
+  }, 600);
+}
+
+// 切换布局后自动重填 displaySet(早=左/晚=右)+ reset 缩放充满
+function refillCompareViewports(vps: { displaySet: any }[] | null) {
+  if (!vps || vps.length < 2) { console.log('[LungCompare] refill: 不足2个视口有数据'); resetCompareViewports(); return; }
+  const uids = vps.map(v => v.displaySet?.displaySetInstanceUID ?? v.displaySet?.UID);
+  console.log('[LungCompare] refill displaySet UIDs:', uids);
+  const { viewportGridService } = store.servicesManager.services;
+  setTimeout(() => {
+    const vpsState: any = viewportGridService.getState().viewports ?? [];
+    const vpIds: string[] = [...vpsState].map(([id]: any) => id);
+    console.log('[LungCompare] 当前视口 ids:', vpIds);
+    try {
+      if (vpIds.length >= 2 && uids[0] && uids[1]) {
+        viewportGridService.setDisplaySetsForViewport({ viewportId: vpIds[0], displaySetInstanceUIDs: [uids[0]] });
+        viewportGridService.setDisplaySetsForViewport({ viewportId: vpIds[1], displaySetInstanceUIDs: [uids[1]] });
+      } else {
+        console.log('[LungCompare] refill 跳过: vpIds 或 uids 不足', vpIds, uids);
+      }
+    } catch (e) { console.error('[LungCompare] setDisplaySet failed', e); }
+    resetCompareViewports();
+  }, 800);
 }
 
 // 对两个视口各跑选中的算法
@@ -277,6 +341,7 @@ export default function LungComparePanel({ servicesManager }: Props) {
   const [selectedAlgo, setSelectedAlgo] = useState(store.selectedAlgo);
   const [fastMode, setFastMode] = useState(store.fastMode);
   const [volStats, setVolStats] = useState(store.volStats);
+  const [layoutName, setLayoutName] = useState(store.layoutName);
 
   store.servicesManager = servicesManager;
   useEffect(() => { store.selectedAlgo = selectedAlgo; }, [selectedAlgo]);
@@ -288,6 +353,7 @@ export default function LungComparePanel({ servicesManager }: Props) {
       setProgress(store.progress);
       setError(store.error);
       setVolStats({ pre: store.volStats.pre, post: store.volStats.post });
+      setLayoutName(store.layoutName);
     }, 300);
     return () => clearInterval(sync);
   }, []);
@@ -308,9 +374,17 @@ export default function LungComparePanel({ servicesManager }: Props) {
       {/* 一键切换 1×2 双 2D 对比布局 */}
       <button
         onClick={() => switchToCompareLayout()}
-        style={{ width: '100%', padding: 6, marginBottom: 12, borderRadius: 4, border: '1px solid #329ce8', background: 'transparent', color: '#329ce8', cursor: 'pointer', fontSize: 12 }}
+        style={{ width: '100%', padding: 6, marginBottom: 8, borderRadius: 4, border: '1px solid #329ce8', background: 'transparent', color: '#329ce8', cursor: 'pointer', fontSize: 12 }}
       >
         ⊕ 切换到 1×2 对比布局(双轴位 2D)
+      </button>
+
+      {/* 循环切换布局 */}
+      <button
+        onClick={() => switchNextLayout()}
+        style={{ width: '100%', padding: 6, marginBottom: 12, borderRadius: 4, border: '1px solid #888', background: 'transparent', color: '#ccc', cursor: 'pointer', fontSize: 12 }}
+      >
+        ⬅️➡️ 切换布局(当前: {layoutName})
       </button>
 
       {/* 算法选择 */}

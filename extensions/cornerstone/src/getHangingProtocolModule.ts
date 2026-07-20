@@ -6,7 +6,7 @@ import { only3D } from './hps/only3D';
 import { primary3D } from './hps/primary3D';
 import { primaryAxial } from './hps/primaryAxial';
 import { frameView } from './hps/frameView';
-import { lungCompare1x2 } from './hps/lungCompare1x2';
+import { lungCompareAxial1x2, lungCompareCoronal1x2, lungCompareSagittal1x2, lungCompare3D1x2 } from './hps/lungCompare1x2';
 
 function getHangingProtocolModule() {
   return [
@@ -43,8 +43,20 @@ function getHangingProtocolModule() {
       protocol: frameView,
     },
     {
-      name: lungCompare1x2.id,
-      protocol: lungCompare1x2,
+      name: lungCompareAxial1x2.id,
+      protocol: lungCompareAxial1x2,
+    },
+    {
+      name: lungCompareCoronal1x2.id,
+      protocol: lungCompareCoronal1x2,
+    },
+    {
+      name: lungCompareSagittal1x2.id,
+      protocol: lungCompareSagittal1x2,
+    },
+    {
+      name: lungCompare3D1x2.id,
+      protocol: lungCompare3D1x2,
     },
   ];
 }

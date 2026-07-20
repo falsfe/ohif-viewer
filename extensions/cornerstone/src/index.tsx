@@ -37,6 +37,7 @@ import ImageOverlayViewerTool from './tools/ImageOverlayViewerTool';
 import getSOPInstanceAttributes from './utils/measurementServiceMappings/utils/getSOPInstanceAttributes';
 import { findNearbyToolData } from './utils/findNearbyToolData';
 import { createFrameViewSynchronizer } from './synchronizers/frameViewSynchronizer';
+import { createSlicePositionSynchronizer } from './synchronizers/slicePositionSynchronizer';
 import { getSopClassHandlerModule } from './getSopClassHandlerModule';
 import { getDynamicVolumeInfo } from '@cornerstonejs/core/utilities';
 import {
@@ -199,6 +200,7 @@ const cornerstoneExtension: Types.Extensions.Extension = {
 
     const { syncGroupService } = servicesManager.services;
     syncGroupService.registerCustomSynchronizer('frameview', createFrameViewSynchronizer);
+    syncGroupService.registerCustomSynchronizer('sliceposition', createSlicePositionSynchronizer);
 
     await init.call(this, props);
   },
