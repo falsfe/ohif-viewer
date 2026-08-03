@@ -15,6 +15,10 @@ const store = {
   selectedAlgo: '',
   servicesManager: null as any,
   pollTimer: null as ReturnType<typeof setInterval> | null,
+  // Segmentation created by the last successful run, so it can be re-applied after a
+  // layout switch (viewports are destroyed/recreated, which drops the representation).
+  segId: null as string | null,
+  segDisplaySetUID: null as string | null,
 };
 
 function stopPolling() {
@@ -22,6 +26,60 @@ function stopPolling() {
     clearInterval(store.pollTimer);
     store.pollTimer = null;
   }
+}
+
+// --- Re-apply segmentation after layout changes -------------------------------------------------
+// Segmentation representations are bound to specific viewportIds. When the user switches the
+// layout, OHIF destroys & recreates viewports, and our ad-hoc representation does NOT come back
+// on its own (the right-side segmentation disappears). We remember the segId + the displaySet it
+// belongs to, and re-add the representation to every viewport showing that displaySet whenever
+// the viewport grid changes. Idempotent: skips 3D viewports (surface conversion crashes on
+// layout change) and viewports that already hold the representation.
+let reapplyListenerSetup = false;
+
+async function reapplyToMatchingViewports(): Promise<boolean> {
+  const segId = store.segId;
+  const segDisplaySetUID = store.segDisplaySetUID;
+  if (!segId || !segDisplaySetUID || !store.servicesManager) return false;
+  const { viewportGridService, segmentationService } = store.servicesManager.services;
+  const { viewports } = viewportGridService.getState();
+  const cs = await import('@cornerstonejs/core');
+  const { ViewportType } = await import('@cornerstonejs/core/enums');
+  let pending = false;
+  for (const [vpId, vp] of viewports ?? []) {
+    const ds: string[] = vp?.displaySetInstanceUIDs || [];
+    if (!ds.includes(segDisplaySetUID)) continue;
+    const el = cs.getEnabledElementByViewportId(vpId);
+    if (!el?.viewport) { pending = true; continue; } // element not enabled yet -> retry shortly
+    if (el.viewport.type === ViewportType.VOLUME_3D) continue; // surface conversion crashes on layout change
+    try {
+      const existing = segmentationService.getSegmentationRepresentations(vpId);
+      if (existing?.some((r: any) => r.segmentationId === segId)) continue;
+      await segmentationService.addSegmentationRepresentation(vpId, {
+        segmentationId: segId,
+        type: 'Labelmap' as const,
+      });
+      el.viewport.render();
+    } catch {}
+  }
+  return pending;
+}
+
+function setupReapplyOnLayoutChange() {
+  if (reapplyListenerSetup || !store.servicesManager) return;
+  const { viewportGridService } = store.servicesManager.services;
+  // Newly created viewports may not be enabled the instant the grid state changes, so retry a
+  // few times until every target viewport is ready (condition-based wait, not a fixed timeout).
+  const attempt = (retriesLeft: number) => {
+    reapplyToMatchingViewports().then(pending => {
+      if (pending && retriesLeft > 0) setTimeout(() => attempt(retriesLeft - 1), 200);
+    });
+  };
+  viewportGridService.subscribe(
+    viewportGridService.EVENTS.GRID_STATE_CHANGED,
+    () => attempt(10)
+  );
+  reapplyListenerSetup = true;
 }
 
 // Fetch result and render overlay (works even when panel is unmounted)
@@ -135,6 +193,13 @@ async function displayResult(taskId: string, selectedAlgo: string) {
         if (el?.viewport) el.viewport.render();
       } catch {}
     });
+
+    // Remember the segmentation so it survives layout switches: viewports are destroyed and
+    // recreated on layout change, which drops the representation. The listener re-adds it to
+    // any viewport that shows this displaySet.
+    store.segId = segId;
+    store.segDisplaySetUID = displaySet.displaySetInstanceUID;
+    setupReapplyOnLayoutChange();
 
     store.phase = 'done';
   } catch (e: any) {

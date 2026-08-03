@@ -37,6 +37,10 @@ const store = {
   volStats: { pre: null as any, post: null as any },
   layoutIndex: 0,
   layoutName: LAYOUTS[0].name,
+  // 已创建的分割 { segId, displaySetUID }[]：术前/术后各一个。
+  // 切布局(setProtocol / setDisplaySetsForViewport)会清掉表示且不会自动恢复,
+  // 所以记录下来,在 grid 变化时按 displaySet 重新挂到对应视口。
+  segs: [] as { segId: string; displaySetUID: string }[],
 };
 
 function stopPolling() {
@@ -44,6 +48,58 @@ function stopPolling() {
     clearInterval(store.pollTimer);
     store.pollTimer = null;
   }
+}
+
+// --- 切布局后重新挂载分割 -----------------------------------------------------------------------
+// 分割表示绑定在具体 viewportId 上。切布局(循环切换方向 / setProtocol / refill 重填 displaySet)
+// 会让视口重建或重载数据,表示被清掉且不会自动回来——右侧分割就消失了。这里监听 grid 变化,
+// 把记录的每个分割按 displaySet 重新挂到"显示该 displaySet 且非 3D 且还没挂"的视口上。
+// 幂等:已有则跳过;3D 视口跳过(与原渲染逻辑一致,避免 surface 转换崩溃)。
+let reapplyListenerSetup = false;
+
+async function reapplySegmentations(): Promise<boolean> {
+  if (!store.segs.length || !store.servicesManager) return false;
+  const { viewportGridService, segmentationService } = store.servicesManager.services;
+  const { viewports } = viewportGridService.getState();
+  const cs = await import('@cornerstonejs/core');
+  const { ViewportType } = await import('@cornerstonejs/core/enums');
+  let pending = false;
+  for (const [vpId, vp] of viewports ?? []) {
+    const ds: string[] = vp?.displaySetInstanceUIDs || [];
+    const el = cs.getEnabledElementByViewportId(vpId);
+    if (!el?.viewport) { pending = true; continue; } // 视口还没 enable -> 稍后重试
+    if (el.viewport.type === ViewportType.VOLUME_3D) continue; // 3D 跳过
+    for (const seg of store.segs) {
+      if (!ds.includes(seg.displaySetUID)) continue; // 只挂显示该 displaySet 的视口
+      try {
+        const existing = segmentationService.getSegmentationRepresentations(vpId);
+        if (existing?.some((r: any) => r.segmentationId === seg.segId)) continue; // 已有则跳过
+        await segmentationService.addSegmentationRepresentation(vpId, {
+          segmentationId: seg.segId,
+          type: 'Labelmap' as const,
+        });
+        el.viewport.render();
+      } catch {}
+    }
+  }
+  return pending;
+}
+
+function setupReapplyOnLayoutChange() {
+  if (reapplyListenerSetup || !store.servicesManager) return;
+  const { viewportGridService } = store.servicesManager.services;
+  // 切布局后 refill 要等 ~800ms 才 setDisplaySet,新视口也要时间 enable,所以多重试几次
+  // (条件等待,不是写死延时),直到所有目标视口就绪并挂上分割。
+  const attempt = (retriesLeft: number) => {
+    reapplySegmentations().then(pending => {
+      if (pending && retriesLeft > 0) setTimeout(() => attempt(retriesLeft - 1), 200);
+    });
+  };
+  viewportGridService.subscribe(
+    viewportGridService.EVENTS.GRID_STATE_CHANGED,
+    () => attempt(20)
+  );
+  reapplyListenerSetup = true;
 }
 
 // 识别当前视口及其 displaySet，按 StudyDate 排序（pre=早 在前）
@@ -147,6 +203,7 @@ async function runComparison() {
   store.tasks = {};
   store.rendered = new Set<string>();
   store.volStats = { pre: null, post: null };
+  store.segs = []; // 清掉上一轮的分割记录
 
   try {
     for (const vp of vps) {
@@ -311,6 +368,12 @@ async function displayResultForViewport(taskId: string, viewportId: string) {
         type: 'Labelmap' as const,
       });
     } catch {}
+
+    // 记录这个分割,以便切布局后按 displaySet 重新挂到对应视口
+    if (!store.segs.some(s => s.segId === segId)) {
+      store.segs.push({ segId, displaySetUID: displaySet.displaySetInstanceUID });
+    }
+    setupReapplyOnLayoutChange();
 
     const enabledEl = cs.getEnabledElementByViewportId(viewportId);
     if (enabledEl?.viewport) enabledEl.viewport.render();
