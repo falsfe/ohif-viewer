@@ -161,6 +161,8 @@ function switchNextLayout() {
     } catch (e: any) {
       store.error = `切换布局失败：${e?.message || '未知'}`;
     }
+    // 切到 3D 时显式保证 CT-Bone(displayPreset 经 displaySetOptions 流转不可靠)
+    if (next.viewportType === 'volume3d') ensureCTBonePreset();
     return;
   }
 
@@ -204,8 +206,16 @@ function refillCompareViewports(vps: { displaySet: any }[] | null) {
         const setIfDifferent = (vpId: string, uid: string) => {
           const cur = viewportGridService.getDisplaySetsUIDsForViewport(vpId) || [];
           if (cur[0] !== uid) {
-            console.log(`[LungCompare] refill 重设 ${vpId}: ${cur[0]} -> ${uid}(会触发重载+重新充满)`);
-            viewportGridService.setDisplaySetsForViewport({ viewportId: vpId, displaySetInstanceUIDs: [uid] });
+            // 保留该视口原有的 displaySetOptions(3D 的 CT-Bone preset 就在这里)。
+            // refill 在 setProtocol 之后延时跑,isHangingProtocolLayout 已复位,
+            // 不显式传回 displaySetOptions 的话 preset 会被清空。
+            const vpState: any = viewportGridService.getState().viewports.get(vpId);
+            console.log(`[LungCompare] refill 重设 ${vpId}: ${cur[0]} -> ${uid}(保留 displaySetOptions)`);
+            viewportGridService.setDisplaySetsForViewport({
+              viewportId: vpId,
+              displaySetInstanceUIDs: [uid],
+              displaySetOptions: vpState?.displaySetOptions || [],
+            });
           } else {
             console.log(`[LungCompare] refill 跳过 ${vpId}: 已是 ${uid}(不重载,不抖动)`);
           }
@@ -217,6 +227,29 @@ function refillCompareViewports(vps: { displaySet: any }[] | null) {
       }
     } catch (e) { console.error('[LungCompare] setDisplaySet failed', e); }
   }, 800);
+}
+
+// 3D 视口就绪后显式套 CT-Bone 预设。
+// lungCompare3D 协议的 displayPreset 经"中途 setProtocol → grid state"这条链路不可靠,
+// 直接运行时 setPreset 最稳。视口就绪时机不确定(setProtocol + refill~800ms + 加载体积),
+// 多试几次兜底;setPreset 内部拿不到 actor 时会 no-op,不会报错。
+function ensureCTBonePreset() {
+  const sm = store.servicesManager;
+  if (!sm) return;
+  const { cornerstoneViewportService } = sm.services;
+  const apply = () => {
+    for (const vpId of ['compare-left', 'compare-right']) {
+      try {
+        const vp = cornerstoneViewportService.getCornerstoneViewport?.(vpId);
+        if (vp?.type === 'volume3d') {
+          vp.setPreset?.('CT-Bone');
+        }
+      } catch {}
+    }
+  };
+  setTimeout(apply, 900);
+  setTimeout(apply, 1400);
+  setTimeout(apply, 2000);
 }
 
 // 对两个视口各跑选中的算法

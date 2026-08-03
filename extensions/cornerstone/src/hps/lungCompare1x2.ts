@@ -17,6 +17,15 @@ const SLICE_SYNC_GROUP = {
   target: true,
 };
 
+// 3D 相机同步:复制完整相机(旋转/视角/缩放),让左右两个 3D 体绘制一起转、一起晃。
+// 2D 不能用这个(会把缩放也同步过去、破坏各自充满),所以只在 3D 协议用。
+const CAMERA_3D_SYNC_GROUP = {
+  type: 'cameraposition',
+  id: 'lungCompare3DCamera',
+  source: true,
+  target: true,
+};
+
 // 3D 体绘制 preset(CT-Bone transfer function),没有它 volume3d 视口会退化成 2D
 const CT_PRESET = { CT: 'CT-Bone', MR: 'MR-Default', default: 'CT-Bone' };
 
@@ -29,6 +38,11 @@ function makeCompareProtocol(
   is3D = false,
 ): Types.HangingProtocol.Protocol {
   const dsOptions = is3D ? { options: { displayPreset: CT_PRESET } } : {};
+  // 2D 同步切片位置(各自充满);3D 同步相机(一起转)。3D 不能用 sliceposition——
+  // 它会监听 CAMERA_MODIFIED 把目标沿法线推拉,旋转时反而造成两边乱动。
+  const syncGroups = is3D
+    ? [VOI_SYNC_GROUP, CAMERA_3D_SYNC_GROUP]
+    : [VOI_SYNC_GROUP, SLICE_SYNC_GROUP];
   return {
     id,
     locked: true,
@@ -59,7 +73,7 @@ function makeCompareProtocol(
               viewportType,
               orientation,
               initialImageOptions: { preset: 'middle' },
-              syncGroups: [VOI_SYNC_GROUP, SLICE_SYNC_GROUP],
+              syncGroups,
               ...(is3D ? { customViewportProps: { hideOverlays: true } } : {}),
             },
             displaySets: [{ id: 'ds0', ...dsOptions }],
@@ -71,7 +85,7 @@ function makeCompareProtocol(
               viewportType,
               orientation,
               initialImageOptions: { preset: 'middle' },
-              syncGroups: [VOI_SYNC_GROUP, SLICE_SYNC_GROUP],
+              syncGroups,
               ...(is3D ? { customViewportProps: { hideOverlays: true } } : {}),
             },
             displaySets: [{ id: 'ds1', ...dsOptions }],
