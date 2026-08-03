@@ -112,9 +112,17 @@ class ImageOverlayViewerTool extends AnnotationDisplayTool {
       x - 1, // Remind that top-left corner's (x, y) is be (1, 1)
       y - 1,
     ]);
-    const overlayTopLeftOnCanvas = viewport.worldToCanvas(overlayTopLeftWorldPos);
-    const overlayBottomRightWorldPos = utilities.imageToWorldCoords(imageId, [width, height]);
-    const overlayBottomRightOnCanvas = viewport.worldToCanvas(overlayBottomRightWorldPos);
+    let overlayTopLeftOnCanvas;
+    let overlayBottomRightOnCanvas;
+    try {
+      overlayTopLeftOnCanvas = viewport.worldToCanvas(overlayTopLeftWorldPos);
+      const overlayBottomRightWorldPos = utilities.imageToWorldCoords(imageId, [width, height]);
+      overlayBottomRightOnCanvas = viewport.worldToCanvas(overlayBottomRightWorldPos);
+    } catch {
+      // 视口正在被销毁/重建(切布局时常见),GPU 渲染上下文已为 null,本帧跳过 overlay 渲染。
+      // 不影响主图像,下一帧视口就绪后自动恢复。
+      return false;
+    }
 
     // add image to the annotations svg layer
     const svgns = 'http://www.w3.org/2000/svg';

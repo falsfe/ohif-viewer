@@ -14,10 +14,10 @@ const ALGOS = [
 
 // 布局循环切换列表(点"循环切换"按钮按顺序切方向:轴位→冠状→矢状→3D)
 const LAYOUTS = [
-  { id: 'lungCompareAxial1x2', name: '轴位对比' },
-  { id: 'lungCompareCoronal1x2', name: '冠状位对比' },
-  { id: 'lungCompareSagittal1x2', name: '矢状位对比' },
-  { id: 'lungCompare3D1x2', name: '3D 对比' },
+  { id: 'lungCompareAxial1x2', name: '轴位对比', orientation: 'axial', viewportType: 'volume' },
+  { id: 'lungCompareCoronal1x2', name: '冠状位对比', orientation: 'coronal', viewportType: 'volume' },
+  { id: 'lungCompareSagittal1x2', name: '矢状位对比', orientation: 'sagittal', viewportType: 'volume' },
+  { id: 'lungCompare3D1x2', name: '3D 对比', orientation: 'coronal', viewportType: 'volume3d' },
 ];
 
 // 模块级 store：面板切换/卸载时保留状态
@@ -137,37 +137,60 @@ function switchToCompareLayout() {
   }
 }
 
-// 循环切换布局:点一下切到下一个视图(1×2对比 → MPR+3D → MPR → 循环)
+// 循环切换布局:点一下切到下一个方向(轴位→冠状→矢状→3D→循环)。
+// 2D 之间:就地改方向,每个视口的 displaySet 原封不动 —— 避免 setProtocol 重新匹配
+//   (它会因为 ds0/ds1 规则相同而把同一序列挂到两个视口)再 refill 重载,造成"等一下再缩放"。
+// 3D:需要 CT preset + 专用 toolGroup,只能走完整 setProtocol(接受一次性重载)。
 function switchNextLayout() {
   const sm = store.servicesManager;
   if (!sm) return;
-  const vps = getViewportsForCompare();  // 切换前记术前/术后(按 StudyDate 早=左 晚=右)
+  const cur = LAYOUTS[store.layoutIndex];
   store.layoutIndex = (store.layoutIndex + 1) % LAYOUTS.length;
   const next = LAYOUTS[store.layoutIndex];
-  try {
-    sm.services.hangingProtocolService?.setProtocol?.(next.id);
-    store.layoutName = next.name;
-    refillCompareViewports(vps);  // 切换后自动重填数据 + 充满
-  } catch (e: any) {
-    store.error = `切换布局失败：${e?.message || '未知'}`;
+  store.layoutName = next.name;
+
+  // 只要涉及 3D(从 3D 切走 或 切到 3D)就走完整 setProtocol:
+  //  3D 需要 CT-Bone preset + volume3d toolGroup;且 3D 的 viewportOptions(volume3d 工具组、
+  //  hideOverlays)绝不能残留到 2D,否则 2D 视口拿错工具组渲染不出图像(Crosshairs 未注册报错)。
+  const involves3D = cur.viewportType === 'volume3d' || next.viewportType === 'volume3d';
+  if (involves3D) {
+    const vps = getViewportsForCompare();
+    try {
+      sm.services.hangingProtocolService?.setProtocol?.(next.id);
+      refillCompareViewports(vps);
+    } catch (e: any) {
+      store.error = `切换布局失败：${e?.message || '未知'}`;
+    }
+    return;
+  }
+
+  // 2D 之间:就地改方向,保留每个视口当前序列(不重新匹配、不重载、不抖动)
+  const { viewportGridService } = sm.services;
+  const { viewports } = viewportGridService.getState();
+  for (const [vpId, vp] of viewports ?? []) {
+    const dsUIDs = viewportGridService.getDisplaySetsUIDsForViewport(vpId) || [];
+    if (!dsUIDs.length) continue;
+    try {
+      viewportGridService.setDisplaySetsForViewport({
+        viewportId: vpId,
+        displaySetInstanceUIDs: dsUIDs,
+        viewportOptions: {
+          ...(vp?.viewportOptions || {}),
+          orientation: next.orientation,
+          viewportType: next.viewportType,
+        },
+      });
+    } catch (e: any) {
+      store.error = `切换方向失败：${e?.message || '未知'}`;
+    }
   }
 }
 
-// 切换布局后重置两视口缩放(确保都充满,避免 camera 同步时序导致缩放不一致)
-function resetCompareViewports() {
-  const sm = store.servicesManager;
-  if (!sm) return;
-  const { cornerstoneViewportService } = sm.services;
-  setTimeout(() => {
-    for (const vpId of ['compare-left', 'compare-right']) {
-      try { cornerstoneViewportService.getCornerstoneViewport?.(vpId)?.resetCamera?.(); } catch {}
-    }
-  }, 600);
-}
-
-// 切换布局后自动重填 displaySet(早=左/晚=右)+ reset 缩放充满
+// 切换布局后自动重填 displaySet(早=左/晚=右),保留用户选的术前/术后序列。
+// 不再 resetCamera: 旧 reset 是为"会顺带同步缩放/平移的同步器"打补丁; 现在同步器已改成
+// 只同步切片、数学上不动缩放和平移,各视口加载时各自充满即可,reset 反而造成"等一下再缩放"。
 function refillCompareViewports(vps: { displaySet: any }[] | null) {
-  if (!vps || vps.length < 2) { console.log('[LungCompare] refill: 不足2个视口有数据'); resetCompareViewports(); return; }
+  if (!vps || vps.length < 2) { console.log('[LungCompare] refill: 不足2个视口有数据'); return; }
   const uids = vps.map(v => v.displaySet?.displaySetInstanceUID ?? v.displaySet?.UID);
   console.log('[LungCompare] refill displaySet UIDs:', uids);
   const { viewportGridService } = store.servicesManager.services;
@@ -177,13 +200,22 @@ function refillCompareViewports(vps: { displaySet: any }[] | null) {
     console.log('[LungCompare] 当前视口 ids:', vpIds);
     try {
       if (vpIds.length >= 2 && uids[0] && uids[1]) {
-        viewportGridService.setDisplaySetsForViewport({ viewportId: vpIds[0], displaySetInstanceUIDs: [uids[0]] });
-        viewportGridService.setDisplaySetsForViewport({ viewportId: vpIds[1], displaySetInstanceUIDs: [uids[1]] });
+        // 只在 displaySet 与目标不一致时才重设; 一致就跳过,避免无谓重载引发的"等一下再缩放"
+        const setIfDifferent = (vpId: string, uid: string) => {
+          const cur = viewportGridService.getDisplaySetsUIDsForViewport(vpId) || [];
+          if (cur[0] !== uid) {
+            console.log(`[LungCompare] refill 重设 ${vpId}: ${cur[0]} -> ${uid}(会触发重载+重新充满)`);
+            viewportGridService.setDisplaySetsForViewport({ viewportId: vpId, displaySetInstanceUIDs: [uid] });
+          } else {
+            console.log(`[LungCompare] refill 跳过 ${vpId}: 已是 ${uid}(不重载,不抖动)`);
+          }
+        };
+        setIfDifferent(vpIds[0], uids[0]);
+        setIfDifferent(vpIds[1], uids[1]);
       } else {
         console.log('[LungCompare] refill 跳过: vpIds 或 uids 不足', vpIds, uids);
       }
     } catch (e) { console.error('[LungCompare] setDisplaySet failed', e); }
-    resetCompareViewports();
   }, 800);
 }
 
