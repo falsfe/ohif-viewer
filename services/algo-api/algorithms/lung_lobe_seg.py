@@ -144,6 +144,11 @@ def _read_dicom_sequence(input_dir):
     for fp, _ in slices_info:
         ds = pydicom.dcmread(fp)
         arr = ds.pixel_array.astype(np.float32)
+        # HU 转换(之前漏了这步:模型拿到的是原始存储值而非 HU,强度整体偏掉 → 分不出肺 → 体积≈0)
+        slope = getattr(ds, "RescaleSlope", 1.0)
+        intercept = getattr(ds, "RescaleIntercept", 0.0)
+        if slope != 1.0 or intercept != 0.0:
+            arr = arr * float(slope) + float(intercept)
         sorted_slices.append(arr)
 
     print(f"[lung_lobe_seg] 读取 {len(sorted_slices)} 张切片, "
