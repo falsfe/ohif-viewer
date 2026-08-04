@@ -41,6 +41,10 @@ const store = {
   // 切布局(setProtocol / setDisplaySetsForViewport)会清掉表示且不会自动恢复,
   // 所以记录下来,在 grid 变化时按 displaySet 重新挂到对应视口。
   segs: [] as { segId: string; displaySetUID: string }[],
+  // 框选范围(X-Y 矩形,像素坐标)。null=不限制(全量)。术前/术后共用同一框。
+  bbox: null as { x0: number; y0: number; x1: number; y1: number } | null,
+  boxAnnotationUID: null as string | null,
+  boxViewportId: null as string | null,
 };
 
 function stopPolling() {
@@ -250,6 +254,83 @@ function ensureCTBonePreset() {
   setTimeout(apply, 900);
   setTimeout(apply, 1400);
   setTimeout(apply, 2000);
+}
+
+// --- 框选范围(X-Y 矩形):复用 RectangleROITool ---
+// 点"框选范围"激活 RectangleROI,用户在 compare 视口拖矩形;完成时把世界坐标转成
+// 体素像素行列存到 store.bbox(术前/术后共用)。null=不限制。下一步再传 params.bbox 给算法。
+let boxListenerSetup = false;
+function setupBoxListener() {
+  if (boxListenerSetup || !store.servicesManager) return;
+  boxListenerSetup = true;
+  Promise.all([import('@cornerstonejs/tools'), import('@cornerstonejs/core')]).then(([mTools, mCore]) => {
+    mCore.eventTarget.addEventListener(mTools.Enums.Events.ANNOTATION_COMPLETED, (evt: any) => {
+      try {
+        const ann = evt.detail?.annotation;
+        if (!ann || ann.metadata?.toolName !== 'RectangleROI') return;
+        captureBoxFromAnnotation(ann);
+      } catch {}
+    });
+  });
+}
+async function captureBoxFromAnnotation(ann: any) {
+  const sm = store.servicesManager;
+  if (!sm) return;
+  const { cornerstoneViewportService, toolGroupService } = sm.services;
+  const vpId = ann.metadata?.viewId;
+  const points: number[][] = ann.data?.handles?.points;
+  if (!vpId || !points || points.length < 2) return;
+  const vp = cornerstoneViewportService.getCornerstoneViewport(vpId);
+  const imageData = (vp as any)?.getImageData?.();
+  if (!imageData?.worldToIndex) return;
+  const idx = points.map((p: any) => imageData.worldToIndex(p));
+  const xs = idx.map((i: any) => i[0]);
+  const ys = idx.map((i: any) => i[1]);
+  const x0 = Math.max(0, Math.round(Math.min(...xs)));
+  const x1 = Math.round(Math.max(...xs));
+  const y0 = Math.max(0, Math.round(Math.min(...ys)));
+  const y1 = Math.round(Math.max(...ys));
+  if (x1 <= x0 || y1 <= y0) return;
+  // 只保留一个框:清掉旧注释
+  if (store.boxAnnotationUID) {
+    try {
+      const { annotation: cstAnn } = await import('@cornerstonejs/tools');
+      cstAnn.state.removeAnnotation(store.boxAnnotationUID);
+    } catch {}
+  }
+  store.bbox = { x0, y0, x1, y1 };
+  store.boxAnnotationUID = ann.annotationUID;
+  store.boxViewportId = vpId;
+  // 画完恢复之前的工具
+  const tg = toolGroupService.getToolGroupForViewport(vpId);
+  const prev = (store as any)._prevTool;
+  if (tg && prev) { try { tg.setToolActive(prev, { bindings: [] }); } catch {} }
+}
+function activateBoxSelect() {
+  const sm = store.servicesManager;
+  if (!sm) return;
+  const { viewportGridService, toolGroupService } = sm.services;
+  setupBoxListener();
+  const { activeViewportId } = viewportGridService.getState();
+  const vpId = activeViewportId || 'compare-left';
+  const tg = toolGroupService.getToolGroupForViewport(vpId);
+  if (!tg) { store.error = '未找到视口工具组,先切到 1×2 对比布局'; return; }
+  // RectangleROI 全局已注册,但工具组默认可能没加,先确保加入再激活
+  try {
+    if (tg.hasTool && !tg.hasTool('RectangleROI')) tg.addToolInstance('RectangleROI');
+  } catch {}
+  (store as any)._prevTool = toolGroupService.getActiveToolForViewport?.(vpId) || 'Pan';
+  try { tg.setToolActive('RectangleROI', { bindings: [] }); } catch (e: any) { store.error = `激活画框失败:${e?.message || e}`; }
+}
+function clearBox() {
+  if (store.boxAnnotationUID) {
+    import('@cornerstonejs/tools').then(({ annotation: cstAnn }) => {
+      try { cstAnn.state.removeAnnotation(store.boxAnnotationUID!); } catch {}
+    });
+  }
+  store.bbox = null;
+  store.boxAnnotationUID = null;
+  store.boxViewportId = null;
 }
 
 // 对两个视口各跑选中的算法
@@ -470,6 +551,7 @@ export default function LungComparePanel({ servicesManager }: Props) {
   const [fastMode, setFastMode] = useState(store.fastMode);
   const [volStats, setVolStats] = useState(store.volStats);
   const [layoutName, setLayoutName] = useState(store.layoutName);
+  const [bbox, setBbox] = useState(store.bbox);
 
   store.servicesManager = servicesManager;
   useEffect(() => { store.selectedAlgo = selectedAlgo; }, [selectedAlgo]);
@@ -482,6 +564,7 @@ export default function LungComparePanel({ servicesManager }: Props) {
       setError(store.error);
       setVolStats({ pre: store.volStats.pre, post: store.volStats.post });
       setLayoutName(store.layoutName);
+      setBbox(store.bbox);
     }, 300);
     return () => clearInterval(sync);
   }, []);
@@ -533,6 +616,33 @@ export default function LungComparePanel({ servicesManager }: Props) {
         <input type="checkbox" checked={fastMode} onChange={e => setFastMode(e.target.checked)} disabled={isBusy} style={{ marginRight: 6 }} />
         快速模式(只跑中间100片,约2分钟/侧,体积为估算)
       </label>
+
+      {/* 框选范围(可选):画一个 X-Y 矩形,只分割框内(术前/术后共用) */}
+      <div style={{ marginBottom: 10, fontSize: 12 }}>
+        <div style={{ color: '#ccc', marginBottom: 4 }}>分割范围(可选)</div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button
+            onClick={() => activateBoxSelect()}
+            style={{ flex: 1, padding: 6, borderRadius: 4, border: '1px solid #888', background: 'transparent', color: '#ccc', cursor: 'pointer', fontSize: 12 }}
+          >
+            框选范围
+          </button>
+          <button
+            onClick={() => clearBox()}
+            disabled={!bbox}
+            style={{ flex: 1, padding: 6, borderRadius: 4, border: '1px solid #666', background: 'transparent', color: '#999', cursor: !bbox ? 'not-allowed' : 'pointer', fontSize: 12 }}
+          >
+            清除框
+          </button>
+        </div>
+        {bbox ? (
+          <div style={{ marginTop: 4, color: '#9ad' }}>
+            已框选 {bbox.x1 - bbox.x0}×{bbox.y1 - bbox.y0}（{bbox.x0},{bbox.y0} - {bbox.x1},{bbox.y1}）
+          </div>
+        ) : (
+          <div style={{ marginTop: 4, color: '#666' }}>未框选 = 全量分割</div>
+        )}
+      </div>
 
       <button
         onClick={() => runComparison()}
