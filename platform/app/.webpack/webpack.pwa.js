@@ -151,7 +151,20 @@ module.exports = (env, argv) => {
       open,
       port: OHIF_PORT,
       client: {
-        overlay: { errors: true, warnings: false },
+        overlay: {
+          errors: true,
+          warnings: false,
+          // 屏蔽 cornerstone3D surface 转换的首帧竞态错误:createAndCacheSurfacesFromRaw
+          // 读 null(labelmap 数据未就绪)报错一次,surface 算出后 cache 自愈,不影响 3D 分割显示。
+          // 其它真错误照常弹。
+          runtimeErrors: error => {
+            // 注意:createAndCacheSurfacesFromRaw 只出现在堆栈里,错误消息是
+            // "Cannot read properties of null (reading 'slice')",所以查 stack 不查 message
+            const text = `${error?.message || ''}\n${error?.stack || ''}`;
+            if (text.includes('createAndCacheSurfacesFromRaw')) return false;
+            return true;
+          },
+        },
       },
       proxy: [
         {
