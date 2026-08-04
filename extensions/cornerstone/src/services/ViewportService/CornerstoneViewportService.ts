@@ -1483,6 +1483,9 @@ class CornerstoneViewportService extends PubSubService implements IViewportServi
       // Otherwise, use the existing type.
       const representationType = type === Surface && !isVolume3D ? Labelmap : type;
 
+      // 3D 视口把 labelmap 转 Surface 渲染。此前因 colorLUTIndex 缺失导致转换崩,已在
+      // SegmentationService._createSegmentationForDisplaySet 给新分割注册真实颜色 LUT 修复,
+      // 这里不再跳过,3D 也能显示分割(Surface 形式)。
       if (hydrated) {
         segmentationService.addSegmentationRepresentation(viewport.id, {
           segmentationId,

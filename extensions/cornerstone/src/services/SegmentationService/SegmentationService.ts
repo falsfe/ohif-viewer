@@ -448,6 +448,22 @@ class SegmentationService extends PubSubService {
     };
 
     this.addOrUpdateSegmentation(segmentationPublicInput);
+
+    // 给新分割注册一个真实的颜色 LUT(按 segment 数量生成颜色),拿 addColorLUT 返回的真实
+    // index 绑定。之前硬编码 0,但 0 号 LUT 可能未初始化 → getSegmentIndexColor 查不到 →
+    // 读 [1] of undefined 崩溃(overlay 每帧渲染都崩)。真实注册一个就不会。
+    if (!this._segmentationIdToColorLUTIndexMap.has(segmentationId)) {
+      const segCount = options?.segments ? Object.keys(options.segments).length : 1;
+      const palette = [
+        [235, 74, 74], [80, 200, 120], [240, 200, 60], [120, 160, 240],
+        [180, 120, 220], [240, 140, 60], [60, 220, 200], [200, 200, 200],
+      ];
+      const colorLUT = Array.from({ length: Math.max(segCount + 1, 8) }, (_, i) =>
+        i === 0 ? [0, 0, 0, 0] : [...palette[(i - 1) % palette.length], 255]
+      );
+      this._segmentationIdToColorLUTIndexMap.set(segmentationId, addColorLUT(colorLUT));
+    }
+
     return segmentationId;
   }
 
